@@ -76,10 +76,11 @@ def init_sheets():
                 # Robust cleaning: handling different ways Render/Docker might escape newlines
                 pk = creds_info["private_key"]
                 if isinstance(pk, str):
-                    # Handle multiple levels of escaping that happen in Env Variables
-                    pk = pk.replace("\\n", "\n")
-                    pk = pk.replace("\\\\n", "\n")
-                    pk = pk.strip().strip("'").strip('"')
+                    # Aggressive cleaning for environment variable pasting
+                    pk = pk.replace("\\n", "\n").replace("\\\\n", "\n")
+                    pk = pk.replace("u003d", "=") # Handle common encoding issues
+                    pk = pk.strip().strip("'").strip('"').strip()
+                    
                 creds_info["private_key"] = pk
 
             creds = Credentials.from_service_account_info(
