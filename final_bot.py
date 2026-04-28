@@ -58,7 +58,8 @@ if not TOKEN or not ADMIN_ID:
 
 # Bot Identity Check
 try:
-    bot_user = telebot.TeleBot(TOKEN).get_me()
+    # Use a temporary instance or the main one to check token validity
+    bot_user = telebot.TeleBot(TOKEN, threaded=False).get_me()
     logging.info(f"🤖 Bot Connected: @{bot_user.username} (ID: {bot_user.id})")
 except Exception as e:
     logging.error(f"❌ Invalid Bot Token: {e}")
@@ -77,7 +78,8 @@ PAYMENT_UPI = os.getenv('PAYMENT_UPI', "amankumar8879@ibl")
 
 # Flask Server Setup
 server = Flask(__name__)
-bot = telebot.TeleBot(TOKEN)
+# CRITICAL: threaded=False is required for Webhook mode in Flask/Gunicorn
+bot = telebot.TeleBot(TOKEN, threaded=False)
 
 @server.route('/', methods=['GET'])
 def index():
@@ -90,22 +92,21 @@ def health():
 @server.route('/bot-webhook', methods=['GET', 'POST'])
 def webhook():
     """Telegram Webhook Endpoint"""
-    logging.info("📥 Webhook hit: Received request from Telegram")
     if request.method == 'GET':
         return "🤖 Webhook is active! Telegram sends updates here via POST.", 200
 
     if request.headers.get('content-type') == 'application/json':
+        logging.info("📥 Webhook hit: POST request received")
         try:
-            json_string = request.get_data().decode('utf-8')
+            json_string = request.get_data(as_text=True)
             update = telebot.types.Update.de_json(json_string)
-            logging.info(f"🔔 Processing Update ID: {update.update_id}")
             if update:
-                if update.message:
-                    logging.info(f"💬 Message from {update.message.from_user.id}: {update.message.text}")
+                msg_type = "Message" if update.message else "Callback" if update.callback_query else "Update"
+                logging.info(f"🔔 Update ID {update.update_id} ({msg_type}) parsing to handlers...")
                 bot.process_new_updates([update])
             return '', 200
         except Exception as e:
-            logging.error(f"❌ Webhook Error: {e}")
+            logging.error(f"❌ Webhook Processing Error: {e}")
             return '', 200 # Telegram ko 200 bhein taaki wo retry na kare
     else:
         abort(403)
@@ -254,10 +255,6 @@ def setup_webhook():
         except Exception as e:
             logging.error(f"❌ Webhook Setup Error: {e}")
 
-# Trigger Webhook Setup
-if os.getenv('RENDER') or (WEBHOOK_HOST and len(WEBHOOK_HOST) > 10):
-    setup_webhook()
-
 # Trigger Webhook Setup during module load for Gunicorn
 # Only run webhook setup if NOT in local testing mode
 # ===================================================
@@ -351,7 +348,7 @@ def get_leaderboard(limit=10):
 def start_command(message):
     """Basic Start with Registration Logic"""
     uid = str(message.from_user.id)
-    logging.info(f"🚀 Handler Triggered: /start command from User ID {uid}")
+    logging.info(f"✅ Handler Triggered: /start command from {uid}")
 
     # Check if this is a brand new user
     existing_user = db.db_get_user(uid)
@@ -1967,8 +1964,12 @@ def cmd_update_points(msg):
 # START BOT
 # ===================================================
 
+# Trigger Webhook Setup AFTER all handlers are registered
+if os.getenv('RENDER') or (WEBHOOK_HOST and len(WEBHOOK_HOST) > 10):
+    setup_webhook()
+
 if __name__ == "__main__":
-    # For local testing, we run the Flask server instead of polling
-    logging.info("🔄 Starting Flask Server for local testing...")
-    # Gunicorn ignores this block and uses the 'server' object
+    # This block is only for local 'python final_bot.py' execution.
+    # Gunicorn uses the 'server' object directly and ignores this.
+    logging.info("🚀 Starting Flask dev server...")
     server.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
