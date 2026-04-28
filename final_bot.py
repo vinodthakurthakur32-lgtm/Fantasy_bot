@@ -90,15 +90,15 @@ def health():
 @server.route('/bot-webhook', methods=['GET', 'POST'])
 def webhook():
     """Telegram Webhook Endpoint"""
+    logging.info("📥 Webhook hit: Received request from Telegram")
     if request.method == 'GET':
         return "🤖 Webhook is active! Telegram sends updates here via POST.", 200
 
     if request.headers.get('content-type') == 'application/json':
         try:
             json_string = request.get_data().decode('utf-8')
-            update_data = json.loads(json_string)
-            logging.info(f"📩 Incoming Update ID: {update_data.get('update_id')}")
             update = telebot.types.Update.de_json(json_string)
+            logging.info(f"🔔 Processing Update ID: {update.update_id}")
             if update:
                 if update.message:
                     logging.info(f"💬 Message from {update.message.from_user.id}: {update.message.text}")
@@ -124,11 +124,14 @@ def sync_matches_from_db():
     """Database se matches load karke global MATCHES dict mein dalta hai"""
     global MATCHES
     
-    # 1. First, pull new matches from Google Sheets and update Local DB
-    sheet_matches = sheets.get_all_rows_safe("MATCHES")
-    if sheet_matches:
-        for m in sheet_matches:
-            db.db_add_match(m['match_id'], m['name'], m['type'], m['deadline'])
+    try:
+        # 1. Pull from Google Sheets
+        sheet_matches = sheets.get_all_rows_safe("MATCHES")
+        if sheet_matches:
+            for m in sheet_matches:
+                db.db_add_match(m['match_id'], m['name'], m['type'], m['deadline'])
+    except Exception as e:
+        logging.warning(f"⚠️ GSheets sync skipped during startup: {e}")
 
     # 2. Then load everything from Local DB to Bot Memory
     db_matches = db.db_get_matches()
@@ -251,8 +254,8 @@ def setup_webhook():
         except Exception as e:
             logging.error(f"❌ Webhook Setup Error: {e}")
 
-# Force webhook setup for Render
-if os.getenv('RENDER') or (WEBHOOK_HOST and "onrender.com" in WEBHOOK_HOST):
+# Trigger Webhook Setup
+if os.getenv('RENDER') or (WEBHOOK_HOST and len(WEBHOOK_HOST) > 10):
     setup_webhook()
 
 # Trigger Webhook Setup during module load for Gunicorn
@@ -347,8 +350,8 @@ def get_leaderboard(limit=10):
 @bot.message_handler(commands=['start'])
 def start_command(message):
     """Basic Start with Registration Logic"""
-    logging.info(f"🚀 /start received from {message.from_user.id}")
     uid = str(message.from_user.id)
+    logging.info(f"🚀 Handler Triggered: /start command from User ID {uid}")
 
     # Check if this is a brand new user
     existing_user = db.db_get_user(uid)
@@ -366,14 +369,16 @@ def start_command(message):
     db.db_create_user(uid, message.from_user.username, message.from_user.first_name)
     
     # Sheets sync
-    sheets.sync_wrapper({
-        "user_id": uid,
-        "username": message.from_user.username or "N/A",
-        "first_name": message.from_user.first_name or "N/A",
-        "paid": 0,
-        "balance": 0,
-        "joined_date": get_now().strftime('%Y-%m-%d %H:%M:%S')
-    }, "USERS")
+    try:
+        sheets.sync_wrapper({
+            "user_id": uid,
+            "username": message.from_user.username or "N/A",
+            "first_name": message.from_user.first_name or "N/A",
+            "paid": 0,
+            "balance": 0,
+            "joined_date": get_now().strftime('%Y-%m-%d %H:%M:%S')
+        }, "USERS")
+    except: pass
 
     if referrer and is_new_registration:
         with db.get_db() as conn:
@@ -1519,15 +1524,25 @@ def cmd_test_sync(msg):
     """Google Sheets connection verify karne ke liye"""
     if str(msg.from_user.id) != ADMIN_ID:
         return
-    bot.send_message(msg.chat.id, "🧪 Testing Google Sheets sync... Check console and your Sheet.")
-    sheets.sync_wrapper({
-        "user_id": str(msg.from_user.id),
-        "username": msg.from_user.username or "N/A",
-        "first_name": "SyncTest_User",
-        "paid": 0,
-        "balance": 999,
-        "joined_date": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    }, "USERS")
+    sent = bot.reply_to(msg, "🔍 *Testing Google Sheets connection...*", parse_mode='Markdown')
+    
+    sh = sheets.init_sheets()
+    if sh:
+        try:
+            # Try to fetch worksheet titles to verify read access
+            worksheets = sh.worksheets()
+            titles = [w.title for w in worksheets]
+            success_text = (
+                "✅ *Google Sheets Connection Successful!*\n\n"
+                f"📊 *Spreadsheet:* {sh.title}\n"
+                f"📋 *Worksheets found:* {', '.join(titles)}\n\n"
+                "System ab data sync karne ke liye taiyar hai."
+            )
+            bot.edit_message_text(success_text, msg.chat.id, sent.message_id, parse_mode='Markdown')
+        except Exception as e:
+            bot.edit_message_text(f"❌ *API Connected but Sheet Access Denied:*\n`{str(e)}`", msg.chat.id, sent.message_id, parse_mode='Markdown')
+    else:
+        bot.edit_message_text("❌ *Failed to Initialize:* Check Render logs for 'GSheets Init Error'. JSON format galat ho sakta hai.", msg.chat.id, sent.message_id, parse_mode='Markdown')
 
 # ===================================================
 # CALLBACKS
@@ -1953,7 +1968,7 @@ def cmd_update_points(msg):
 # ===================================================
 
 if __name__ == "__main__":
-    # Local development ke liye polling use karein
-    bot.remove_webhook()
-    logging.info("🔄 Local Dev Detected: Starting Polling Mode...")
-    bot.infinity_polling()
+    # For local testing, we run the Flask server instead of polling
+    logging.info("🔄 Starting Flask Server for local testing...")
+    # Gunicorn ignores this block and uses the 'server' object
+    server.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
