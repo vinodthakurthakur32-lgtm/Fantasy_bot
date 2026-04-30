@@ -39,53 +39,44 @@ def init_sheets():
             ]
 
             raw_creds = os.getenv("GOOGLE_CREDENTIALS")
+            g_private_key = os.getenv("G_PRIVATE_KEY")
             creds_info = None
 
-            if raw_creds:
+            # Method 1: Individual Variables (Render ke liye sabse best)
+            if g_private_key:
+                logging.info("🔑 Loading credentials from individual environment variables.")
+                creds_info = {
+                    "type": os.getenv("G_TYPE", "service_account"),
+                    "project_id": os.getenv("G_PROJECT_ID"),
+                    "private_key_id": os.getenv("G_PRIVATE_KEY_ID"),
+                    "private_key": g_private_key.replace("\\n", "\n"),
+                    "client_email": os.getenv("G_CLIENT_EMAIL"),
+                    "client_id": os.getenv("G_CLIENT_ID"),
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                    "client_x509_cert_url": os.getenv("G_CERT_URL"),
+                    "universe_domain": "googleapis.com"
+                }
+            elif raw_creds:
                 try:
-                    # Render logic: JSON string mangling repair
-                    cleaned_raw = raw_creds.strip().strip("'").strip('"')
-                    
-                    try:
-                        creds_info = json.loads(cleaned_raw)
-                    except json.JSONDecodeError:
-                        # Repair backslashes: Escape lone backslashes that trip up the parser
-                        import re
-                        repaired = re.sub(r'\\(?![/"\\bfnrt]|u[0-9a-fA-F]{4})', r'\\\\', cleaned_raw)
-                        # Also fix literal newlines if any
-                        repaired = repaired.replace('\n', '\\n')
-                        creds_info = json.loads(repaired)
+                    creds_info = json.loads(raw_creds.strip().strip("'").strip('"'))
                 except Exception as e:
                     logging.error(f"❌ Failed to parse GOOGLE_CREDENTIALS: {e}")
-                    # Fallback: Agar environment variable invalid hai toh local file check karein
-                    if os.path.exists("credentials.json"):
+
+            if not creds_info and os.path.exists("credentials.json"):
+                try:
+                    if os.path.getsize("credentials.json") > 0:
                         with open("credentials.json", "r") as f:
                             creds_info = json.load(f)
                     else:
-                        return None
-            elif os.path.exists("credentials.json"):
-                try:
-                    with open("credentials.json", "r") as f:
-                        creds_info = json.load(f)
-                    logging.info("✅ Loading Google credentials from local credentials.json file.")
+                        logging.error("❌ credentials.json is empty. Please paste your service account JSON.")
                 except Exception as e:
                     logging.error(f"❌ Error reading local credentials.json: {e}")
-                    return None
-            else:
-                logging.error("❌ GOOGLE_CREDENTIALS environment variable or credentials.json file is missing!")
+
+            if not creds_info:
+                logging.error("❌ No Google Credentials found! Check Environment Variables.")
                 return None
-            
-            # Ensure private key has correct newline characters for JWT signing.
-            # We handle both single-escaped and double-escaped newlines.
-            if "private_key" in creds_info:
-                # Robust cleaning: handling different ways Render/Docker might escape newlines
-                pk = creds_info["private_key"]
-                if isinstance(pk, str):
-                    # Render logic: literal \n characters in env vars must be actual newlines
-                    pk = pk.replace("\\n", "\n").replace("\\\\n", "\n")
-                    # Remove literal quotes or whitespace that often get included accidentally
-                    pk = pk.strip().strip("'").strip('"')
-                creds_info["private_key"] = pk
 
             creds = Credentials.from_service_account_info(
                 creds_info,
