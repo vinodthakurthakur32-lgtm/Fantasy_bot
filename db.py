@@ -118,6 +118,32 @@ def init_db():
             points_awarded NUMERIC,
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )''')
+        # FIX 3: Add USER_STATE table for persistence
+        c.execute('''CREATE TABLE IF NOT EXISTS USER_STATE (
+            user_id VARCHAR(255),
+            key VARCHAR(255),
+            value TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, key)
+        )''')
+
+        # FEATURE 1: Add REMINDERS table
+        c.execute('''CREATE TABLE IF NOT EXISTS REMINDERS (
+            id SERIAL PRIMARY KEY,
+            match_id TEXT,
+            user_id TEXT,
+            reminder_type TEXT,
+            sent_at TEXT
+        )''')
+        # FEATURE 4: Add SUPPORT_TICKETS table
+        c.execute('''CREATE TABLE IF NOT EXISTS SUPPORT_TICKETS (
+            id SERIAL PRIMARY KEY,
+            user_id TEXT,
+            issue TEXT,
+            status TEXT DEFAULT 'open',
+            created_at TEXT,
+            resolved_at TEXT
+        )''')
 
 def db_set_setting(key, value):
     with get_db() as c:
@@ -143,6 +169,11 @@ def db_get_contest_config(mid, fee):
     with get_db() as c:
         c.execute("SELECT * FROM CONTEST_CONFIG WHERE match_id=%s AND entry_fee=%s", (mid, fee))
         return c.fetchone()
+
+def db_delete_contest(mid, fee):
+    """Admin can remove a specific contest configuration"""
+    with get_db() as c:
+        c.execute("DELETE FROM CONTEST_CONFIG WHERE match_id=%s AND entry_fee=%s", (mid, fee))
 
 def db_get_all_contest_configs(mid):
     with get_db() as c:
@@ -191,15 +222,31 @@ def db_get_user(user_id):
         c.execute("SELECT * FROM USERS WHERE user_id=%s", (str(user_id),))
         return c.fetchone()
 
-def db_create_user(user_id, username, first_name):
+def db_register_user_optimized(user_id, username, first_name):
+    """
+    Optimized user registration: Single connection check, create, and update last_seen.
+    Returns (is_new_user, user_data)
+    """
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    uid_str = str(user_id)
     with get_db() as c:
-        c.execute("""
-            INSERT INTO USERS (user_id, username, first_name, joined_date, last_seen, is_flagged) 
-            VALUES (%s, %s, %s, %s, %s, 0)
-            ON CONFLICT (user_id) DO NOTHING
-        """, (str(user_id), username, first_name, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
-        c.execute("UPDATE USERS SET last_seen = %s WHERE user_id = %s", 
-                     (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), str(user_id)))
+        # 1. Check if user exists
+        c.execute("SELECT * FROM USERS WHERE user_id=%s", (uid_str,))
+        user = c.fetchone()
+        
+        if not user:
+            # 2. Create new user
+            c.execute("""
+                INSERT INTO USERS (user_id, username, first_name, joined_date, last_seen, is_flagged) 
+                VALUES (%s, %s, %s, %s, %s, 0)
+            """, (uid_str, username, first_name, now, now))
+            # Fetch the newly created user
+            c.execute("SELECT * FROM USERS WHERE user_id=%s", (uid_str,))
+            return True, c.fetchone()
+        else:
+            # 3. Just update last_seen
+            c.execute("UPDATE USERS SET last_seen = %s WHERE user_id = %s", (now, uid_str))
+            return False, user
 
 def db_reward_referrer(referrer_id, new_user_id, amount=10):
     """Referrer ke ledger mein bonus credit karta hai agar wo already rewarded nahi hai"""
@@ -232,9 +279,33 @@ def db_get_failed_utr_count(user_id):
         row = c.fetchone()
         return row['cnt'] if row and 'cnt' in row else row[0] if row else 0
 
+# FIX 3: Helper functions for user state persistence
+def db_set_user_state(user_id, key, value):
+    with get_db() as c:
+        c.execute("""
+            INSERT INTO USER_STATE (user_id, key, value) VALUES (%s, %s, %s)
+            ON CONFLICT (user_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP
+        """, (str(user_id), key, str(value)))
+
+def db_get_user_state(user_id, key):
+    with get_db() as c:
+        c.execute("SELECT value FROM USER_STATE WHERE user_id=%s AND key=%s", (str(user_id), key))
+        row = c.fetchone()
+        return row['value'] if row else None
+
 def db_flag_user(user_id, status=1):
     with get_db() as c:
         c.execute("UPDATE USERS SET is_flagged = %s WHERE user_id = %s", (status, str(user_id)))
+
+def db_get_all_user_teams(user_id, match_id):
+    """Ek hi baar mein user ki saari teams fetch karta hai (Performance optimization)"""
+    try:
+        with get_db() as c:
+            c.execute("SELECT * FROM TEAMS WHERE user_id=%s AND match_id=%s", (str(user_id), match_id))
+            return c.fetchall()
+    except Exception as e:
+        logging.error(f"Error fetching all teams: {e}")
+        return []
 
 def db_get_team_internal(user_id, match_id='m1', team_num=1):
     try:
@@ -302,14 +373,46 @@ def get_admin_stats():
             "paid": paid, "conv": round(conv_rate, 1), "flagged": flagged
         }
 
-def get_contest_stats(match_id):
+def db_get_match_financials(match_id):
+    """Calculates total collection and stats based on actual paid entries in Ledger"""
+    with get_db() as c:
+        # Find all DEBIT entries in Ledger related to this match join
+        # reference_id format is 'DEBIT_MATCH_{match_id}_{team_num}_{timestamp}'
+        search_pattern = f"DEBIT_MATCH_{match_id}_%"
+        c.execute("""
+            SELECT ABS(SUM(amount)) as total_collection, COUNT(*) as total_entries 
+            FROM LEDGER 
+            WHERE type='DEBIT' AND reference_id LIKE %s
+        """, (search_pattern,))
+        row = c.fetchone()
+        
+        # Get all distinct entry fees joined for this match to show prize breakdowns
+        c.execute("""
+            SELECT DISTINCT entry_fee, max_slots 
+            FROM CONTEST_CONFIG 
+            WHERE match_id=%s
+        """, (match_id,))
+        configs = c.fetchall()
+        
+        return {
+            "collection": float(row['total_collection']) if row and row['total_collection'] else 0,
+            "entries": row['total_entries'] if row else 0,
+            "configs": configs
+        }
+
+def get_contest_stats(match_id, entry_fee=100):
     """Fetches real-time participation stats for a match dashboard"""
     with get_db() as c:
         c.execute("SELECT COUNT(*) FROM TEAMS WHERE match_id=%s AND is_paid=1", (match_id,))
         total_joined = c.fetchone()['count']
-        # Mock prize pool logic - in production, this would be in a CONTESTS table
-        prize_pool = total_joined * 100 * 0.9 # 90% payout
-        return {"joined": total_joined, "prize_pool": int(prize_pool)}
+
+        c.execute("SELECT max_slots FROM CONTEST_CONFIG WHERE match_id=%s AND entry_fee=%s", (match_id, entry_fee))
+        cfg = c.fetchone()
+        max_slots = cfg['max_slots'] if cfg else 50 # Default 50 slots
+        
+        # Prize pool calculated based on max slots (Mega Contest logic)
+        prize_pool = max_slots * entry_fee * 0.9 # 90% payout
+        return {"joined": total_joined, "max_slots": max_slots, "prize_pool": int(prize_pool)}
 
 def get_user_match_summary(user_id, match_id):
     """Calculates user-specific stats for a specific match"""
@@ -375,7 +478,8 @@ def get_live_ranks(match_id):
 def db_add_player(match_id, name, role):
     with get_db() as c:
         c.execute(
-            "INSERT INTO PLAYERS (match_id, player_name, role) VALUES (%s, %s, %s)",
+            """INSERT INTO PLAYERS (match_id, player_name, role) VALUES (%s, %s, %s)
+               ON CONFLICT (match_id, player_name) DO UPDATE SET role = EXCLUDED.role""",
             (match_id, name, role)
         )
 
@@ -384,6 +488,13 @@ def db_get_players_by_match(match_id):
     with get_db() as c:
         c.execute("SELECT player_name, role FROM PLAYERS WHERE match_id=%s", (match_id,))
         return c.fetchall()
+
+def db_get_player_count(match_id):
+    """Returns the total number of players added to a specific match"""
+    with get_db() as c:
+        c.execute("SELECT COUNT(*) as cnt FROM PLAYERS WHERE match_id=%s", (match_id,))
+        row = c.fetchone()
+        return row['cnt'] if row else 0
 
 def db_delete_player(match_id, name):
     with get_db() as c:
@@ -399,3 +510,120 @@ def db_get_user_payment_history(user_id, limit=10):
             "SELECT amount, status, timestamp FROM PAYMENTS WHERE user_id=%s ORDER BY timestamp DESC LIMIT %s",
             (str(user_id), limit))
         return c.fetchall()
+
+# ADD 1: Get transaction history from LEDGER
+def db_get_transaction_history(user_id, limit=10):
+    with get_db() as c:
+        c.execute("""
+            SELECT type, amount, reference_id, timestamp 
+            FROM LEDGER WHERE user_id=%s 
+            ORDER BY timestamp DESC LIMIT %s
+        """, (str(user_id), limit))
+        return c.fetchall()
+
+# ADD 3: Get Referral Stats
+def db_get_referral_stats(user_id):
+    with get_db() as c:
+        c.execute("SELECT COUNT(*) as total FROM USERS WHERE referred_by=%s", (str(user_id),))
+        total = c.fetchone()['total']
+        c.execute("SELECT SUM(amount) as bonus FROM LEDGER WHERE user_id=%s AND reference_id LIKE 'REF_BONUS_%%'", (str(user_id),))
+        bonus = c.fetchone()['bonus'] or 0
+        return {"total": total, "bonus": bonus}
+
+# ADD 4: Update withdrawal status stage
+def db_update_withdrawal_status(req_id, status):
+    with get_db() as c:
+        c.execute("UPDATE WITHDRAWALS SET status=%s WHERE id=%s", (status, req_id))
+
+# FEATURE 1: Reminder System Helpers
+def db_get_users_without_team(match_id):
+    with get_db() as c:
+        c.execute("""
+            SELECT user_id FROM USERS 
+            WHERE user_id NOT IN (SELECT user_id FROM TEAMS WHERE match_id=%s AND team_saved=1)
+        """, (match_id,))
+        return [row['user_id'] for row in c.fetchall()]
+
+def db_get_users_unpaid_team(match_id):
+    with get_db() as c:
+        c.execute("""
+            SELECT user_id FROM TEAMS 
+            WHERE match_id=%s AND team_saved=1 AND is_paid=0
+        """, (match_id,))
+        return [row['user_id'] for row in c.fetchall()]
+
+def db_mark_reminder_sent(match_id, user_id, reminder_type):
+    with get_db() as c:
+        c.execute("""
+            INSERT INTO REMINDERS (match_id, user_id, reminder_type, sent_at) 
+            VALUES (%s, %s, %s, %s)
+        """, (match_id, user_id, reminder_type, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+
+def db_was_reminder_sent(match_id, user_id, reminder_type):
+    with get_db() as c:
+        c.execute("""
+            SELECT 1 FROM REMINDERS 
+            WHERE match_id=%s AND user_id=%s AND reminder_type=%s
+        """, (match_id, user_id, reminder_type))
+        return c.fetchone() is not None
+
+# FEATURE 3: Re-engagement Notification Helpers
+def db_get_inactive_users(days=3):
+    with get_db() as c:
+        three_days_ago = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+        seven_days_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
+        c.execute("""
+            SELECT user_id, first_name FROM USERS 
+            WHERE last_seen < %s 
+            AND user_id NOT IN (
+                SELECT DISTINCT user_id FROM REMINDERS 
+                WHERE reminder_type='reengagement' AND sent_at > %s
+            )
+        """, (three_days_ago, seven_days_ago))
+        return c.fetchall()
+
+# FEATURE 4: Support Ticket System Helpers
+def db_create_ticket(user_id, issue):
+    with get_db() as c:
+        c.execute("INSERT INTO SUPPORT_TICKETS (user_id, issue, created_at) VALUES (%s, %s, %s) RETURNING id",
+                  (user_id, issue, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+        return c.fetchone()['id']
+
+def db_resolve_ticket(ticket_id):
+    with get_db() as c:
+        c.execute("UPDATE SUPPORT_TICKETS SET status='resolved', resolved_at=%s WHERE id=%s",
+                  (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), ticket_id))
+
+# FEATURE 5: Live Rank Helpers
+def db_get_user_rank(user_id, match_id):
+    with get_db() as c:
+        c.execute("""
+            SELECT rank FROM (
+                SELECT user_id, points,
+                RANK() OVER (ORDER BY points DESC) as rank
+                FROM TEAMS WHERE match_id=%s AND is_paid=1
+            ) ranked WHERE user_id=%s
+        """, (match_id, user_id))
+        return c.fetchone()
+
+def db_get_match_participant_count(match_id):
+    with get_db() as c:
+        c.execute("SELECT COUNT(DISTINCT user_id) FROM TEAMS WHERE match_id=%s AND is_paid=1", (match_id,))
+        return c.fetchone()['count']
+
+def db_get_all_player_scores(match_id):
+    """Returns a dictionary of all players and their current total points"""
+    with get_db() as c:
+        c.execute("""
+            SELECT player_name, (runs * 1 + fours * 4 + sixes * 6 + wickets * 25) as pts 
+            FROM PLAYER_LIVE_STATS WHERE match_id=%s
+        """, (match_id,))
+        rows = c.fetchall()
+        return {r['player_name']: r['pts'] for r in rows}
+
+def db_get_player_live_stats_map(match_id):
+    """Returns a dictionary of player_name -> full stats record"""
+    with get_db() as c:
+        c.execute("SELECT * FROM PLAYER_LIVE_STATS WHERE match_id=%s", (match_id,))
+        rows = c.fetchall()
+        return {r['player_name']: r for r in rows}
