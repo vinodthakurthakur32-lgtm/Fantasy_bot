@@ -119,32 +119,34 @@ def admin_help_render():
 🛠 *ADMIN MASTER CONTROL GUIDE*
 ━━━━━━━━━━━━━━━━━━━━
 
-🏏 *MATCH SETUP & MANAGEMENT*
+ *CORE CONTROLS*
+• `/admin_panel` - Dashboard open karein
+• `/broadcast` - Sabhi users ko message ya photo bhein
+• `/export_data` - Pura backup CSV format mein lein
+
+🏏 *MATCH & PLAYER MANAGEMENT*
 • `/add_match` - Naya match create karein
   _Ex: m1 | CSK vs MI | IPL | 2026-05-01 19:30_
-• `/add_player` - Players add karein (Active match context use hota hai)
-  _Ex: Kohli | bat_
-• `/my_matches` - Matches manage/delete karne ke liye
+• `/add_player` - Players add karein (Bulk ya Single)
+• `/delete_player` - Player ko match se hatayein
+• `/my_matches` - Matches list aur manage karein
 • `/list_players m1` - Players list dekhne ke liye
 
 🏆 *CONTESTS & PRIZES*
 • `/set_contest_size` - Contest config set karein
-  _Ex: m1 | 100 | 50 | 10_ (fee | slots | comm%)
+  _Ex: m1 | 100 | 50_ (fee | slots)
+• `/delete_contest` - Kisi contest ko remove karein
 • `/set_prize_config` - Global prize logic (Commission | Win% | R1 | R2 | R3)
-  _Ex: 10 | 70 | 35 | 20 | 12_
 
 📈 *LIVE SCORING (REAL-TIME)*
-• `/up` - Fast point update (Active match use karta hai)
-  _Ex: /up Kohli 50_
-• `/update_points` - Manual point update
-  _Ex: /update_points m1 | Kohli:50, Dhoni:20_
+• `/up` - Fast point update (Ex: /up Kohli 50)
+• `/update_points` - Bulk update (Ex: /up m1 | Kohli:50, Dhoni:20)
+• `/myrank` - Kisi bhi match ka live rank check karein
 
-💰 *FINANCE & SYSTEM SETTINGS*
-• `/match_finance m1` - Match ki kamayi aur breakdown
-• `/broadcast` - Sabhi users ko message ya photo bhein
+⚙️ *SYSTEM SETTINGS*
 • `/set_handle` - Support/Channel/Channel IDs update karein
-  _Ex: SUPPORT_ID | -100123456789_
-• `/download_db` - Database backup download karein
+• `/rules` - Scoring system aur multipliers dekhein
+• `/clear_database` - ⚠️ Purana test data saaf karein
 ━━━━━━━━━━━━━━━━━━━━
 💡 _Sare commands direct chat mein type karein ya Dashboard buttons ka use karein._"""
     return markup, text
