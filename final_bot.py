@@ -2290,7 +2290,7 @@ def cmd_admin_help(msg):
         return
     try:
         markup, text = ui.admin_help_render()
-        bot.send_message(msg.chat.id, text, reply_markup=markup, parse_mode='Markdown')
+        bot.send_message(msg.chat.id, text, reply_markup=markup, parse_mode='HTML')
     except Exception as e:
         logging.error(f"Admin help error: {e}")
 
