@@ -136,7 +136,8 @@ def admin_help_render():
 1️⃣ <code>/add_match</code> - Naya match details banayein
 2️⃣ <code>/add_player</code> - Players add karein (RR vs DC)
    <i>Format: Name | Role | Desig | Team</i>
-   <i>Ex: Virat Kohli | bat | c | RCB</i>
+• <code>/set_live_link</code> - <b>(NEW)</b> Streaming link set karein
+   <i>Ex: m1 | https://aapka-streaming-link.com</i>
 3️⃣ <code>/setup_contests</code> - Ek sath Mega/Med/Small set karein
 
 🏆 <b>CONTESTS &amp; PLAYER MANAGEMENT</b>
@@ -361,6 +362,9 @@ def match_dashboard_render(match_id, info, stats, user_summary, time_left, conte
     
     avail_spots = stats['max_slots'] - stats['joined']
     
+    live_link = info.get('live_link')
+    live_text = f"📺 Yaha match live dekh skte ho\n" if live_link else ""
+
     if contest_configs:
         for cfg in contest_configs:
             fee = cfg['entry_fee']
@@ -393,6 +397,7 @@ def match_dashboard_render(match_id, info, stats, user_summary, time_left, conte
 ⏰ Time Left: {time_left}
 ━━━━━━━━━━━━━━━━━━━━
 💰 *Prize Pool: ₹{stats['prize_pool']}*
+{live_text}
 🎯 Entry: ₹{entry_fee}
 
 👥 {stats['joined']}/{stats['max_slots']} spots filled
