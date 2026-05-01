@@ -547,7 +547,7 @@ def show_player_selection(chat_id, user_id, role, match_id='m1', team_num=1, mes
         
         markup = types.InlineKeyboardMarkup(row_width=1)
         
-        for player in get_players(match_id)[role]:
+        for player_obj in get_players(match_id)[role]:
             p_name = player_obj['name']
             status = "✅" if p_name in selected else "⬜"
             # 🛠️ Logical change: Callback only uses clean name
@@ -604,7 +604,11 @@ def show_player_selection(chat_id, user_id, role, match_id='m1', team_num=1, mes
             bot.send_message(chat_id, text, reply_markup=markup, parse_mode='Markdown')
     except Exception as e:
         logging.error(f"Error in show_player_selection: {e}")
-        bot.send_message(chat_id, f"❌ Error: {str(e)[:100]}")
+        # Send technical error to Admin instead of User
+        if ADMIN_ID:
+            bot.send_message(ADMIN_ID, f"⚠️ <b>UI Error (Selection):</b>\n<code>{html.escape(str(e))}</code>", parse_mode='HTML')
+        # Friendly message for User
+        bot.send_message(chat_id, "❌ Kuch technical issue hua hai. Kripya thodi der baad try karein ya support se sampark karein.")
 
 # ===================================================
 # SAVE TEAM
