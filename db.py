@@ -185,7 +185,7 @@ def db_add_match(mid, name, m_type, deadline, points_calculated=0):
         c.execute("""
             INSERT INTO MATCHES_LIST (match_id, name, type, deadline, points_calculated) VALUES (%s, %s, %s, %s, %s)
             ON CONFLICT (match_id) DO UPDATE SET name = EXCLUDED.name, type = EXCLUDED.type, deadline = EXCLUDED.deadline, points_calculated = EXCLUDED.points_calculated
-        """, (mid, name, m_type, deadline))
+        """, (mid, name, m_type, deadline, points_calculated))
 
 def db_get_matches():
     with get_db() as c:
