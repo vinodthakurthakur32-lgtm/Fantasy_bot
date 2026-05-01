@@ -19,10 +19,12 @@ def admin_event_markup(match_id, players, active_role='bat', is_locked=False, st
 
     # 1. Role Filter Buttons (Panel ko chhota rakhne ke liye)
     role_btns = []
-    for r in ['bat', 'wk', 'ar', 'bowl', 'sub']:
+    # Added 'cv' virtual role to filters to quickly find captains
+    for r in ['bat', 'wk', 'ar', 'bowl', 'sub', 'cv']:
         label = f"» {r.upper()} «" if r == active_role else r.upper()
         role_btns.append(types.InlineKeyboardButton(label, callback_data=f"adm_filter_{match_id}_{r}"))
-    markup.row(*role_btns)
+    markup.row(*role_btns[:3]) # Split into two rows for cleaner UI
+    markup.row(*role_btns[3:])
 
     # 2. Only show players of active role
     if active_role in players:
