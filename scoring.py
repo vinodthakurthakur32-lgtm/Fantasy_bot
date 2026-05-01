@@ -20,7 +20,7 @@ def update_match_event(match_id, player_name, event_type):
         conn.execute(f"""
             INSERT INTO PLAYER_LIVE_STATS (match_id, player_name, {col}) 
             VALUES (%s, %s, 1)
-            ON CONFLICT(match_id, player_name) DO UPDATE SET {col} = {col} + 1
+            ON CONFLICT(match_id, player_name) DO UPDATE SET {col} = PLAYER_LIVE_STATS.{col} + 1
         """, (match_id, player_name))
 
         # 2. Log Event
