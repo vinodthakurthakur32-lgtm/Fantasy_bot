@@ -19,7 +19,7 @@ SHEET_STRUCTURES = {
     "PAYMENTS": ["user_id", "amount", "upi_txn_id", "timestamps", "status"],
     "WITHDRAWALS": ["user_id", "amount", "upi_id", "timestamp", "status"],
     "RESULTS": ["contest_date", "user_id", "points", "rank", "prize"],
-    "MATCHES": ["match_id", "name", "type", "deadline"],
+     "MATCHES": ["match_id", "name", "type", "deadline", "live_link"],
 }
 
 # Load env variables
