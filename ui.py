@@ -431,7 +431,8 @@ def team_points_breakdown_render(match_id, team_num, team_data, player_stats_map
     for role in ['bat', 'wk', 'ar', 'bowl', 'sub']:
         p_list = team_data.get(role, [])
         if not p_list: continue
-        res += f"\n*{role.upper()}*\n"
+        role_label = "IMPACT/SUB" if role == 'sub' else role.upper()
+        res += f"\n*{role_label}*\n"
         for p in p_list:
             stats = player_stats_map.get(p, {'runs': 0, 'fours': 0, 'sixes': 0, 'wickets': 0})
             raw_pts = (stats['runs'] * 1 + stats['fours'] * 4 + stats['sixes'] * 6 + stats['wickets'] * 25)
