@@ -333,6 +333,11 @@ def db_get_team(user_id, match_id='m1', team_num=1):
 def db_save_team(user_id, team_data, match_id='m1', team_num=1):
     """Persist to Database and invalidate cache for consistency"""
     try:
+        # 🛡️ Safety check: Don't overwrite existing DB data with empty data (prevents corruption on session loss)
+        if not team_data or get_total_players(team_data) == 0:
+            logging.warning(f"⚠️ Blocked saving empty team for {user_id} - possibly session error.")
+            return
+
         with db.get_db() as conn:
             team_json = json.dumps({k: team_data.get(k, []) for k in ROLES})
             conn.execute("""
@@ -674,6 +679,12 @@ def callback_final_confirm_save(call):
     match_id, team_num = parts[3], int(parts[4])
     
     team = db_get_team(uid, match_id, team_num)
+    
+    # 🛡️ Prevent overwriting with invalid/incomplete team if cache was lost during restart
+    if not team or get_total_players(team) != 11:
+        bot.answer_callback_query(call.id, "❌ Session Error: Team building state lost. Please re-select your 11 players.", show_alert=True)
+        return
+
     team['team_saved'] = 1
     
     # Ensure C/VC are initialized to None if not set, to avoid errors in db_save_team
@@ -872,9 +883,9 @@ def callback_set_cv(call):
     db_save_team(uid, team, match_id, team_num)
     bot.answer_callback_query(call.id, f"{'Captain' if type_cv=='c' else 'VC'} set to {name}")
     
-    # Stay in the same menu to pick the other one
-    call.data = f"set_cv_menu_{match_id}_{team_num}"
-    callback_cv_menu(call)
+    # Stay on the preview screen to pick the other one or save
+    call.data = f"team_save_{match_id}_{team_num}"
+    callback_team_save(call)
 
 # ===================================================
 # CONTEST
