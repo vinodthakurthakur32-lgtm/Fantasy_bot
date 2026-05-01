@@ -9,6 +9,8 @@ import html
 from contextlib import contextmanager
 import logging
 import threading
+import csv
+import io
 
 # Modular Imports
 try:
@@ -1227,8 +1229,18 @@ def handle_utr_input(msg):
             success, res_msg = process_payment_success(uid, intent['amount'], f"UTR_{utr}", intent['match_context'], conn=conn)
             
             if success:
+                now_ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 conn.execute("UPDATE PAYMENT_INTENTS SET status='completed' WHERE id=%s", (intent['id'],))
                 bot.reply_to(msg, f"✅ *UTR VERIFIED!*\n\n₹{intent['amount']} added to wallet.\nRef: {utr}", parse_mode='Markdown')
+                
+                # 📊 Sync to Google Sheets (Auto-completed)
+                sheets.sync_wrapper({
+                    "user_id": uid,
+                    "amount": intent['amount'],
+                    "upi_txn_id": utr,
+                    "timestamp": now_ts,
+                    "status": "completed"
+                }, "PAYMENTS")
                 
                 # 🔔 Admin Notification for Auto-Payment with History
                 history = db.db_get_user_payment_history(uid, limit=3)
@@ -1256,7 +1268,7 @@ def callback_approve(call):
     bot.answer_callback_query(call.id)
 
     with db.get_db() as conn:
-        conn.execute("SELECT amount, id FROM PAYMENTS WHERE user_id=%s AND match_id=%s AND status='pending' ORDER BY timestamp DESC", (uid, mid))
+        conn.execute("SELECT amount, id, upi_txn_id, timestamp FROM PAYMENTS WHERE user_id=%s AND match_id=%s AND status='pending' ORDER BY timestamp DESC", (uid, mid))
         pay_row = conn.fetchone()
         if not pay_row:
             bot.edit_message_caption(caption="❌ No pending request found.", chat_id=call.message.chat.id, message_id=call.message.message_id)
@@ -1268,6 +1280,16 @@ def callback_approve(call):
         success, _ = process_payment_success(uid, amount, ref, f"{mid}_{tnum}", conn=conn)
         if success:
             conn.execute("UPDATE PAYMENTS SET status='completed' WHERE id=%s", (pay_row['id'],))
+            
+            # 📊 Sync Update to Google Sheets
+            sheets.sync_wrapper({
+                "user_id": uid,
+                "amount": amount,
+                "upi_txn_id": pay_row['upi_txn_id'],
+                "timestamp": pay_row['timestamp'],
+                "status": "completed"
+            }, "PAYMENTS")
+            
             bot.send_message(uid, f"🎉 *PAYMENT APPROVED!*\n₹{amount} credited to ledger.", parse_mode='Markdown')
             bot.edit_message_caption(caption=f"✅ APPROVED (₹{amount})", chat_id=call.message.chat.id, message_id=call.message.message_id)
 
@@ -1278,11 +1300,25 @@ def callback_reject(call):
     
     try:
         with db.get_db() as conn:
+            # Fetch info before update for sheet sync
+            conn.execute("SELECT amount, upi_txn_id, timestamp FROM PAYMENTS WHERE user_id=%s AND status='pending' ORDER BY timestamp DESC LIMIT 1", (uid,))
+            pay_row = conn.fetchone()
+            
             conn.execute("UPDATE PAYMENTS SET status='rejected' WHERE user_id=%s AND status='pending'", (uid,))
         
         user = db.db_get_user(uid)
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("💳 TRY AGAIN", callback_data="init_deposit"))
+
+        if pay_row:
+            # 📊 Sync Update to Google Sheets
+            sheets.sync_wrapper({
+                "user_id": uid,
+                "amount": pay_row['amount'],
+                "upi_txn_id": pay_row['upi_txn_id'],
+                "timestamp": pay_row['timestamp'],
+                "status": "rejected"
+            }, "PAYMENTS")
 
         warning_msg = "⚠️ *PAYMENT REJECTED & WARNING*\n\nAapka payment reject kar diya gaya hai. Kripya sahi screenshot aur details bhein. Baar-baar galat details bhejne par aapka account restrict kiya ja sakta hai."
         bot.send_message(uid, warning_msg, reply_markup=markup, parse_mode='Markdown')
@@ -1545,6 +1581,15 @@ def process_withdrawal_details(msg):
                 (uid, amount, upi_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
             )
             req_id = conn.fetchone()['id']
+
+        # 📊 Sync to Google Sheets (Withdrawal Request)
+        sheets.sync_wrapper({
+            "user_id": uid,
+            "amount": amount,
+            "upi_id": upi_id,
+            "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "status": "pending"
+        }, "WITHDRAWALS")
 
         bot.reply_to(msg, f"✅ *Request Submitted!*\n💰 Amount: ₹{amount}\n🏦 UPI: `{upi_id}`\n\nAdmin 10-15 minute mein verify karke paise bhej dega aur payment ka screenshot yahi share karega.")
 
@@ -1847,6 +1892,37 @@ def process_handle_setting(msg):
             bot.reply_to(msg, "❌ Invalid Type! Use `SUPPORT`, `CHANNEL`, `PAYMENT_ID`, or `SUPPORT_ID`.")
     except:
         bot.reply_to(msg, "❌ Error! Format: `TYPE | HANDLE`")
+
+@bot.message_handler(commands=['clear_database'])
+def cmd_clear_db(msg):
+    """DANGER: Wipes all test data from the database"""
+    if not is_admin(msg.from_user.id): return
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("🔥 YES, WIPE EVERYTHING", callback_data="adm_wipe_confirm"))
+    markup.add(types.InlineKeyboardButton("❌ CANCEL", callback_data="app_home"))
+    bot.send_message(msg.chat.id, 
+        "⚠️ *DANGER ZONE*\n\nKya aap sach mein saara data delete karna chahte hain?\n\n"
+        "Isse niche di gayi tables khali ho jayengi:\n"
+        "• Matches & Players\n"
+        "• Teams & Points\n"
+        "• Payments & Ledger\n\n"
+        "Yeh action revert nahi ho sakta.", 
+        reply_markup=markup, parse_mode='Markdown')
+
+@bot.callback_query_handler(func=lambda call: call.data == "adm_wipe_confirm")
+def callback_wipe_confirm(call):
+    if not is_admin(call.from_user.id): return
+    try:
+        with db.get_db() as conn:
+            tables = ['MATCHES_LIST', 'PLAYERS', 'TEAMS', 'PAYMENTS', 'PAYMENT_INTENTS', 'USED_UTR', 'LEDGER', 'PLAYER_LIVE_STATS', 'MATCH_EVENTS']
+            for table in tables:
+                conn.execute(f"DELETE FROM {table}")
+        global MATCHES, PLAYERS_CACHE
+        MATCHES = {}
+        PLAYERS_CACHE = {}
+        bot.edit_message_text("✅ *Database Wiped Clean!* Saara test data delete ho gaya hai. Ab aap fresh start kar sakte hain.", call.message.chat.id, call.message.message_id, parse_mode='Markdown')
+    except Exception as e:
+        bot.edit_message_text(f"❌ Error during wipe: {e}", call.message.chat.id, call.message.message_id)
 
 @bot.message_handler(commands=['rules'])
 def cmd_rules(msg):
@@ -2217,6 +2293,37 @@ def cmd_download_db(msg):
             bot.reply_to(msg, "❌ Database file not found!")
     except Exception as e:
         logging.error(f"Error downloading DB: {e}")
+    bot.reply_to(msg, "📂 PostgreSQL use ho raha hai, isliye `/export_data` use karein CSV backup ke liye.")
+
+@bot.message_handler(commands=['export_data'])
+def cmd_export_data(msg):
+    """Saari main tables ko CSV bana kar admin ko bhejta hai"""
+    if not is_admin(msg.from_user.id): return
+    
+    tables = ['USERS', 'PAYMENTS', 'WITHDRAWALS', 'MATCHES_LIST', 'TEAMS']
+    bot.send_message(msg.chat.id, "📤 *Generating CSV Backups...*")
+
+    for table in tables:
+        try:
+            with db.get_db() as conn:
+                conn.execute(f"SELECT * FROM {table}")
+                rows = conn.fetchall()
+                if not rows: continue
+                
+                output = io.StringIO()
+                writer = csv.DictWriter(output, fieldnames=rows[0].keys())
+                writer.writeheader()
+                writer.writerows(rows)
+                
+                output.seek(0)
+                # Convert to binary stream for Telegram
+                bio = io.BytesIO(output.getvalue().encode('utf-8'))
+                bio.name = f"{table.lower()}_backup_{datetime.now().strftime('%Y%m%d')}.csv"
+                bot.send_document(msg.chat.id, bio, caption=f"📊 Table: {table}")
+        except Exception as e:
+            bot.send_message(msg.chat.id, f"❌ Error exporting {table}: {e}")
+    
+    bot.send_message(msg.chat.id, "✅ Backup complete!")
 
 @bot.message_handler(commands=['broadcast'])
 def cmd_broadcast(msg):
