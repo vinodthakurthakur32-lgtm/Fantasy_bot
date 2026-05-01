@@ -786,54 +786,11 @@ def callback_navigate_role(call):
     show_player_selection(call.message.chat.id, str(call.from_user.id), role, match_id, team_num, call.message.message_id)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("set_cv_menu_"))
-def callback_cv_menu(call):
-    uid = str(call.from_user.id)
-    parts = call.data.split("_")
-    match_id, team_num = parts[3], int(parts[4])
-    if is_match_locked(match_id):
-        bot.answer_callback_query(call.id, "🚫 Team Locked!", show_alert=True)
-        return
-
-    team = db_get_team(uid, match_id, team_num)
-    players_info = get_players(match_id)
-    
-    # Filter: Sirf wahi players dikhao jo user ki team mein hain AUR Admin ne C/VC designate kiye hain
-    admin_cv_list = players_info.get('cv', []) # Admin designated candidates
-    user_selected_names = []
-    for r in ['bat', 'wk', 'ar', 'bowl']:
-        user_selected_names.extend(team.get(r, []))
-
-    # Intersection of User Team and Admin designated C/VCs
-    available_candidates = [p for p in admin_cv_list if p['name'] in user_selected_names]
-    
-    markup = types.InlineKeyboardMarkup() 
-    for p_obj in available_candidates:
-        p_name = p_obj['name']
-        d_name = p_obj['display']
-        c_icon = "👑" if team.get('captain') == p_name else "⚪"
-        vc_icon = "⭐" if team.get('vice_captain') == p_name else "⚪"
-
-        # Row 1: Player Name
-        markup.row(types.InlineKeyboardButton(f"👤 {d_name}", callback_data="ignore"))
-        # Row 2: Inline C and VC buttons
-        markup.row(
-            types.InlineKeyboardButton(f"{c_icon} CAPTAIN", callback_data=f"cv_{match_id}_{team_num}_c_{p_name.replace(' ', '_')}"),
-            types.InlineKeyboardButton(f"{vc_icon} VICE-CAPTAIN", callback_data=f"cv_{match_id}_{team_num}_vc_{p_name.replace(' ', '_')}")
-        )
-
-    # Done button: Only prominent if both are selected
-    if team.get('captain') and team.get('vice_captain'):
-        markup.add(types.InlineKeyboardButton("🚀 DONE & SAVE TEAM", callback_data=f"view_team_{match_id}_{team_num}"))
-
-    if not available_candidates:
-        markup.row(types.InlineKeyboardButton("⚠️ No Admin-Designated C/VC in your team!", callback_data="ignore"))
-        markup.add(types.InlineKeyboardButton("✏️ EDIT SQUAD", callback_data=f"nav_bat_{match_id}_{team_num}"))
-
-    markup.add(types.InlineKeyboardButton("🔙 BACK", callback_data=f"team_save_{match_id}_{team_num}"))
-    
-    summary = f"👑 *C:* {team.get('captain', '❌')}\n⭐ *VC:* {team.get('vice_captain', '❌')}"
-    bot.edit_message_text(f"🎯 *SET C & VC (Admin Picks Only)*\n\n{summary}\n\n_Captain (2x points) aur Vice-Captain (1.5x) same nahi ho sakte._", 
-                         call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode='Markdown')
+def callback_set_cv_menu(call): # Renamed to avoid confusion, now redirects to team_save
+    # This callback is now primarily for the "SET/CHANGE C & VC" button from view_team
+    # It will simply call team_save to render the combined preview and C/VC selection
+    call.data = f"team_save_{call.data.split('_')[3]}_{call.data.split('_')[4]}"
+    callback_team_save(call)
 
 @bot.message_handler(commands=['edit_designation'])
 def cmd_edit_designation(msg):
@@ -883,7 +840,7 @@ def callback_set_cv(call):
     db_save_team(uid, team, match_id, team_num)
     bot.answer_callback_query(call.id, f"{'Captain' if type_cv=='c' else 'VC'} set to {name}")
     
-    # Stay on the preview screen to pick the other one or save
+    # Stay on the preview screen to pick the other one or save (now handled by team_save)
     call.data = f"team_save_{match_id}_{team_num}"
     callback_team_save(call)
 
@@ -2495,7 +2452,7 @@ def process_setup_contests_start(msg):
     bot.register_next_step_handler(msg, process_mega_setup)
 
 def process_mega_setup(msg):
-    if not is_admin(msg.from_user.id): return
+    if not is_admin(msg.from_user.id): return # Admin check
     uid = str(msg.from_user.id)
     mid = ADMIN_MATCH_CONTEXT.get(uid)
     
