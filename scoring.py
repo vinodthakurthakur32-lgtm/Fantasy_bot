@@ -35,14 +35,14 @@ def update_match_event(match_id, player_name, event_type):
             players_data = json.loads(team['team_players'])
             raw_team_names = []
             for role in players_data:
-                # Ensure we strip any team info or tags from stored team data
-                raw_team_names.extend([p.split(' (')[0].strip() for p in players_data[role]])
+                # Ensure we strip any team info or tags from stored team data for matching
+                raw_team_names.extend([str(p).split(' (')[0].strip() for p in players_data[role]])
             
             if player_name in raw_team_names:
                 # Multiply if Captain/VC
                 multiplier = 1.0
-                raw_c = team['captain'].split(' (')[0].strip() if team['captain'] else ""
-                raw_vc = team['vice_captain'].split(' (')[0].strip() if team['vice_captain'] else ""
+                raw_c = str(team['captain']).split(' (')[0].strip() if team['captain'] else ""
+                raw_vc = str(team['vice_captain']).split(' (')[0].strip() if team['vice_captain'] else ""
                 if player_name == raw_c: multiplier = CAPTAIN_MULTIPLIER
                 elif player_name == raw_vc: multiplier = VC_MULTIPLIER
                 
