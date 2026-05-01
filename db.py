@@ -218,6 +218,19 @@ def run_migrations():
             for col_name, col_def in cols:
                 if col_name not in existing:
                     c.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}")
+        
+        # 🔥 FIX: Unique constraint update for PLAYERS table
+        try:
+            # Purani constraint (without team) ko delete karein
+            c.execute("ALTER TABLE PLAYERS DROP CONSTRAINT IF EXISTS players_match_id_player_name_key")
+            # Check karein agar nayi constraint (with team) pehle se hai ya nahi
+            c.execute("SELECT 1 FROM pg_constraint WHERE conname = 'players_match_id_player_name_team_key'")
+            if not c.fetchone():
+                # Nayi unique constraint add karein jisme 'team' bhi shamil ho
+                c.execute("ALTER TABLE PLAYERS ADD CONSTRAINT players_match_id_player_name_team_key UNIQUE (match_id, player_name, team)")
+        except Exception as e:
+            logging.info(f"Constraint migration info: {e}")
+
     logging.info("✅ Database Migrations completed.")
 
 def db_get_user(user_id):
