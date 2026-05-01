@@ -2719,7 +2719,8 @@ def process_player_addition(msg):
             'w': 'wk', 'keeper': 'wk', 'keep': 'wk',
             'ball': 'bowl', 'baller': 'bowl', 'bowler': 'bowl',
             'all': 'ar', 'allrounder': 'ar', 'ar': 'ar',
-            'bat': 'bat', 'batsman': 'bat'
+            'bat': 'bat', 'batsman': 'bat',
+            's': 'sub', 'sub': 'sub', 'substitute': 'sub'
         }
 
         for entry in entries:
@@ -2759,7 +2760,13 @@ def process_player_addition(msg):
         if failed_players:
             response_text += "\n\n*Nahi huye:*\n" + "\n".join(failed_players)
             
-        bot.send_message(msg.chat.id, response_text, parse_mode='Markdown')
+        # Navigation buttons after import
+        markup = types.InlineKeyboardMarkup()
+        markup.add(
+            types.InlineKeyboardButton("👥 View Players", callback_data=f"adm_m_view_{mid}"),
+            types.InlineKeyboardButton("🏆 Setup Contests", callback_data="adm_nav_home")
+        )
+        bot.send_message(msg.chat.id, response_text, reply_markup=markup, parse_mode='Markdown')
 
         # Wizard Flow: Check if we should proceed to contest setup
         if ADMIN_MATCH_CONTEXT.get(uid + "_wizard"):
