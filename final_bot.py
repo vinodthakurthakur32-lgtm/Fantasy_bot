@@ -177,9 +177,6 @@ user_active_match = {} # Tracks which match user is paying for
 user_deposit_amount = {} # Temporary store for deposit amount input
 temp_team_cache = {} # Selection cache
 user_active_order = {} # user_id -> order_id mapping
-# State tracking for replies (No manual 'Reply' needed in Telegram)
-ACTIVE_REPLY_STATE = {} # {chat_id: (ticket_id, user_id, orig_msg_id, orig_text)}
-
 def process_payment_success(user_id, amount, ref_id, match_context=None, conn=None):
     """
     Atomic transaction to process successful payments.
@@ -1774,15 +1771,17 @@ def callback_ticket_reply(call):
     parts = call.data.split("_")
     ticket_id, user_id = parts[2], parts[3]
     orig_text = call.message.text # Original ticket ka text save kar lo
+    chat_id = str(call.message.chat.id)
     
     try:
         # 1. Pehle loading khatam karein
         bot.answer_callback_query(call.id, "Type your reply now!")
 
-        # 2. State set karein (Strict Chat ID tracking)
-        ACTIVE_REPLY_STATE[int(call.message.chat.id)] = (ticket_id, user_id, call.message.message_id, orig_text)
+        # 2. State set karein (Database for persistence if bot sleeps/restarts)
+        state_data = json.dumps([ticket_id, user_id, call.message.message_id, orig_text])
+        db.db_set_user_state(chat_id, 'PENDING_TICKET_REPLY', state_data)
         
-        bot.send_message(call.message.chat.id,
+        bot.send_message(chat_id,
             f"💬 <b>Ticket #{ticket_id}</b> ka reply likho:\n\n"
             f"Agla message jo aap bhein ge, wo seedha user ko chala jayega.",
             parse_mode='HTML')
@@ -1790,16 +1789,22 @@ def callback_ticket_reply(call):
         logging.error(f"Reply Trigger Error: {e}")
         bot.answer_callback_query(call.id, "❌ Error: Prompt nahi bhej paya.", show_alert=True)
 
-@bot.message_handler(func=lambda m: int(m.chat.id) in ACTIVE_REPLY_STATE and not (m.text and m.text.startswith('💬')) and not (m.text and m.text.startswith('/')))
-@bot.channel_post_handler(func=lambda m: int(m.chat.id) in ACTIVE_REPLY_STATE and not (m.text and m.text.startswith('💬')) and not (m.text and m.text.startswith('/')))
+def check_pending_reply(m):
+    if not m.text or m.text.startswith('/') or m.text.startswith('💬'): return False
+    state = db.db_get_user_state(str(m.chat.id), 'PENDING_TICKET_REPLY')
+    return state is not None
+
+@bot.message_handler(func=check_pending_reply)
+@bot.channel_post_handler(func=check_pending_reply)
 def handle_ticket_reply_intercept(msg):
     """Admin ka reply intercept karega (Loop se bachne ke liye prompt messages ko ignore karega)"""
-    chat_id = int(msg.chat.id)
-    logging.info(f"📥 Intercepted reply in chat {chat_id}")
-    
-    data = ACTIVE_REPLY_STATE.pop(chat_id)
-    ticket_id, user_id, orig_msg_id, orig_text = data
-    send_ticket_reply(msg, ticket_id, user_id, orig_msg_id, orig_text, chat_id)
+    chat_id_str = str(msg.chat.id)
+    state_raw = db.db_get_user_state(chat_id_str, 'PENDING_TICKET_REPLY')
+    if state_raw:
+        db.db_set_user_state(chat_id_str, 'PENDING_TICKET_REPLY', None) # Clear state
+        data = json.loads(state_raw)
+        ticket_id, user_id, orig_msg_id, orig_text = data
+        send_ticket_reply(msg, ticket_id, user_id, orig_msg_id, orig_text, int(chat_id_str))
 
 def send_ticket_reply(msg, ticket_id, user_id, orig_msg_id, orig_text, chat_id):
     if not msg.text:
@@ -2300,7 +2305,8 @@ def cmd_export_data(msg):
     """Saari main tables ko CSV bana kar admin ko bhejta hai"""
     if not is_admin(msg.from_user.id): return
     
-    tables = ['USERS', 'PAYMENTS', 'WITHDRAWALS', 'MATCHES_LIST', 'TEAMS']
+    # List ko expand kiya hai taaki poora hisaab mil sake
+    tables = ['USERS', 'PAYMENTS', 'WITHDRAWALS', 'MATCHES_LIST', 'TEAMS', 'LEDGER', 'CONTEST_CONFIG']
     bot.send_message(msg.chat.id, "📤 *Generating CSV Backups...*")
 
     for table in tables:
@@ -2308,7 +2314,9 @@ def cmd_export_data(msg):
             with db.get_db() as conn:
                 conn.execute(f"SELECT * FROM {table}")
                 rows = conn.fetchall()
-                if not rows: continue
+                if not rows:
+                    bot.send_message(msg.chat.id, f"ℹ️ Table *{table}* abhi khali hai (No Data).", parse_mode='Markdown')
+                    continue
                 
                 output = io.StringIO()
                 writer = csv.DictWriter(output, fieldnames=rows[0].keys())
@@ -2320,6 +2328,7 @@ def cmd_export_data(msg):
                 bio = io.BytesIO(output.getvalue().encode('utf-8'))
                 bio.name = f"{table.lower()}_backup_{datetime.now().strftime('%Y%m%d')}.csv"
                 bot.send_document(msg.chat.id, bio, caption=f"📊 Table: {table}")
+                time.sleep(1) # Telegram anti-flood delay
         except Exception as e:
             bot.send_message(msg.chat.id, f"❌ Error exporting {table}: {e}")
     
