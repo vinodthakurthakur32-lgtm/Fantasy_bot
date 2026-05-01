@@ -138,12 +138,16 @@ def admin_help_render():
    <i>Tip: Horizontal bhein (Name|w, Name|bat)</i>
 3️⃣ <code>/setup_contests</code> - Ek sath Mega/Med/Small set karein
 
-🏆 <b>CONTESTS &amp; PRIZE OVERRIDE</b>
+🏆 <b>CONTESTS &amp; PLAYER MANAGEMENT</b>
+• <code>/delete_contest</code> - Particular contest hatayein
 • <code>/set_manual_prizes</code> - <b>(NEW)</b> Custom prize set karein
   <i>Format: mid | fee | R1 | R2 | R3 | R4-10 | Bottom | Winners</i>
 • <code>/set_contest_size</code> - Single contest modify karein
 • <code>/set_prize_config</code> - Global commission/payout set karein
-• <code>/my_matches</code> - Saare active matches manage karein
+• <code>/my_matches</code> - Dashboard se match/player control karein (Buttons)
+• <code>/list_players</code> - <b>(NEW)</b> Interactive Squad (Click karke delete karein)
+• <code>/edit_player_role</code> - Player ka role badlein
+• <code>/delete_player</code> - Squad se player nikalne ke liye
 
 📈 <b>LIVE SCORING (REAL-TIME)</b>
 • <code>/up</code> - Fast point update (Ex: <code>/up Kohli 50</code>)
