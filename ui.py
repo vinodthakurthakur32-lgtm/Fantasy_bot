@@ -1,3 +1,4 @@
+import html
 import time
 from datetime import datetime, timedelta
 from telebot import types
@@ -67,7 +68,7 @@ def admin_match_finance_render(match_id, match_name, fin_data):
     )
     
     for cfg in fin_data['configs']:
-        bd = get_prize_breakdown(cfg['entry_fee'], cfg['max_slots'])
+        bd = get_prize_breakdown(cfg['entry_fee'], cfg['max_slots'], match_id=match_id)
         res += (
             f"\n📍 *Contest ₹{cfg['entry_fee']} ({cfg['max_slots']} slots):*\n"
             f"🥇 1st: ₹{bd['1st']} | 🥈 2nd: ₹{bd['2nd']}\n"
@@ -88,14 +89,15 @@ def admin_dashboard_home(stats, matches):
         types.InlineKeyboardButton("🔗 Referrals", callback_data="adm_nav_refs"),
         types.InlineKeyboardButton(fraud_btn_text, callback_data="adm_nav_fraud"),
         types.InlineKeyboardButton("🏆 Leaderboard", callback_data="adm_nav_lead"),
-        types.InlineKeyboardButton("📤 Export Data", callback_data="adm_export_data"),
-        types.InlineKeyboardButton("🛠 Match Setup Guide", callback_data="adm_nav_help"), # Direct button for the new setup flow
-        types.InlineKeyboardButton("❓ Help", callback_data="adm_nav_help"),
+    )
+    markup.add(
+        types.InlineKeyboardButton("📤 Data Backup", callback_data="adm_export_data"),
+        types.InlineKeyboardButton("🛠 Setup Guide", callback_data="adm_nav_help"),
         types.InlineKeyboardButton("🔄 Refresh Data", callback_data="adm_nav_home")
     )
     # Add match control buttons
     if matches:
-        markup.add(types.InlineKeyboardButton("--- Match Controls ---", callback_data="ignore"))
+        markup.add(types.InlineKeyboardButton("━━━━━━━━━━━━━━", callback_data="ignore"))
         for mid, info in matches.items():
             markup.row(
                 types.InlineKeyboardButton(f"🎮 Control: {info['name']}", callback_data=f"adm_ctrl_{mid}"),
@@ -105,14 +107,14 @@ def admin_dashboard_home(stats, matches):
     markup.add(types.InlineKeyboardButton("🔙 EXIT ADMIN", callback_data="app_home"))
     
     text = (
-        "📊 *ADMIN DASHBOARD*\n"
+        "📊 <b>ADMIN DASHBOARD</b>\n"
         "━━━━━━━━━━━━━━\n"
-        f"👥 Users: `{stats['total']}` | 🟢 Live: `{stats['active']}`\n"
-        f"🆕 Today: `{stats['new']}` | 🚨 Fraud: `{stats['flagged']}`\n"
+        f"👥 Users: <code>{stats['total']}</code> | 🟢 Live: <code>{stats['active']}</code>\n"
+        f"🆕 Today: <code>{stats['new']}</code> | 🚨 Fraud: <code>{stats['flagged']}</code>\n"
         "━━━━━━━━━━━━━━\n"
-        f"💳 Paid: `{stats['paid']}` | 📈 Conv: `{stats['conv']}%`\n"
+        f"💳 Paid: <code>{stats['paid']}</code> | 📈 Conv: <code>{stats['conv']}%</code>\n"
         "━━━━━━━━━━━━━━\n"
-        "🔄 _Click Refresh for updates_"
+        "🔄 <i>Click Refresh for updates</i>"
     )
     return markup, text
 
@@ -122,46 +124,39 @@ def admin_help_render():
     markup.add(types.InlineKeyboardButton("🔙 BACK TO DASHBOARD", callback_data="adm_nav_home"))
     
     text = """
-🛠 <b>ADMIN MASTER CONTROL GUIDE</b>
+🛠 <b>ADMIN CONTROL CENTER</b>
 ━━━━━━━━━━━━━━━━━━━━
 
-🎮 <b>CORE CONTROLS</b>
-• <code>/admin_panel</code> - Dashboard open karein
-• <code>/broadcast</code> - Sabhi users ko message ya photo bhein
-• <code>/export_data</code> - Pura backup CSV format mein lein
+🚀 <b>QUICK ACTIONS</b>
+• <code>/admin_panel</code> - Main Dashboard
+• <code>/broadcast</code> - Sabhi ko message bhein
+• <code>/export_data</code> - Pura data backup lein
 
-🏏 <b>MATCH &amp; PLAYER MANAGEMENT</b>
-• <code>/add_match</code> - Naya match create karein
-• <code>/add_player</code> - Players add karein
-  <i>Horizontal Format: <code>m1</code> (enter) <code>Name | w, Name | bat</code></i>
-• <code>/setup_contests</code> - Mega/Med/Small setup karein
-• <code>/delete_player</code> - Player ko match se hatayein
-  <i>Ex: <code>m1 | Rohit Sharma</code></i>
-• <code>/my_matches</code> - Matches list aur manage karein (Add/View/Delete)
-• <code>/list_players</code> - Match ke players list karein
-  <i>Ex: <code>/list_players m1</code></i>
+🏏 <b>MATCH SETUP FLOW (Step-by-Step)</b>
+1️⃣ <code>/add_match</code> - Naya match details banayein
+2️⃣ <code>/add_player</code> - Players add karein (RR vs DC)
+   <i>Tip: Horizontal bhein (Name|w, Name|bat)</i>
+3️⃣ <code>/setup_contests</code> - Ek sath Mega/Med/Small set karein
 
-🏆 <b>CONTESTS &amp; PRIZES</b>
-• <code>/set_contest_size</code> - Contest config set karein
-  <i>Ex: <code>m1 | 100 | 50</code> (match_id | entry_fee | max_slots)</i>
-• <code>/delete_contest</code> - Kisi contest ko remove karein
-  <i>Ex: <code>m1 | 20</code></i>
-• <code>/set_prize_config</code> - Global prize logic (Commission | Win% | R1 | R2 | R3)
-  <i>Ex: <code>10 | 70 | 35 | 20 | 12</code></i>
+🏆 <b>CONTESTS &amp; PRIZE OVERRIDE</b>
+• <code>/set_manual_prizes</code> - <b>(NEW)</b> Custom prize set karein
+  <i>Format: mid | fee | R1 | R2 | R3 | R4-10 | Bottom | Winners</i>
+• <code>/set_contest_size</code> - Single contest modify karein
+• <code>/set_prize_config</code> - Global commission/payout set karein
+• <code>/my_matches</code> - Saare active matches manage karein
 
 📈 <b>LIVE SCORING (REAL-TIME)</b>
-• <code>/up</code> - Fast point update
-  <i>Ex: <code>/up Kohli 50</code> (Active match use karta hai)</i>
-  <i>Ex: <code>/up m1 | Kohli:50, Dhoni:20</code> (Bulk update)</i>
-• <code>/myrank</code> - Kisi bhi match ka live rank check karein (User command)
+• <code>/up</code> - Fast point update (Ex: <code>/up Kohli 50</code>)
+• Admin Dashboard mein <b>Match Control</b> se 🔒 <b>LOCK / UNLOCK</b> karein.
+• <code>/myrank</code> - User rank check karein
 
-⚙️ <b>SYSTEM SETTINGS</b>
-• <code>/set_handle</code> - Support/Channel/Channel IDs update karein
-  <i>Ex: <code>SUPPORT | @my_support_handle</code></i>
-• <code>/rules</code> - Scoring system aur multipliers dekhein (User command)
-• <code>/clear_database</code> - ⚠️ Purana test data saaf karein (Irreversible)
+⚙️ <b>ADVANCED SETTINGS</b>
+• <code>/set_fake_count</code> - <b>(HOT)</b> Display participants badhayein
+• <code>/set_handle</code> - Support/Channel links update karein
+• <code>/rules</code> - Point system update karein
+• <code>/clear_database</code> - ⚠️ Pura data saaf karein
 ━━━━━━━━━━━━━━━━━━━━
-💡 <i>Sare commands direct chat mein type karein ya Dashboard buttons ka use karein.</i>"""
+💡 <i>Naya match setup karne ke liye Step 1, 2, 3 follow karein.</i>"""
     return markup, text
 
 def admin_funnel_render(funnel_counts):
@@ -242,8 +237,10 @@ def contest_list_render(matches):
     
     for mid, info in matches.items():
         deadline = info['deadline']
-        is_locked = now > deadline
-        time_left_delta = deadline - now
+        # Using dynamic lock check
+        from final_bot import is_match_locked
+        is_locked = is_match_locked(mid)
+        time_left_delta = info['deadline'] - now
 
         status_icon = "🔒" if is_locked else "⏳"
 
@@ -256,8 +253,27 @@ def contest_list_render(matches):
     res += "\n⚠️ *No team?* \n👉 Pehle team banao niche buttons se."
     return markup, res
 
-def get_prize_breakdown(fee, slots, custom_comm=None):
-    """Calculates distribution where ~70% of players win"""
+def get_prize_breakdown(fee, slots, custom_comm=None, match_id=None):
+    """Calculates distribution where all winners get >= fee and top ranks get surplus"""
+    if match_id:
+        manual = db.db_get_manual_prizes(match_id, fee)
+        if manual:
+            collection = fee * slots
+            pool = manual['r1'] + manual['r2'] + manual['r3'] + (manual['r4_10'] * 7) + (manual['bottom'] * (manual['winners_count'] - 10))
+            return {
+                "collection": collection,
+                "commission_amt": collection - pool,
+                "comm_pct": round(((collection - pool) / collection) * 100, 1) if collection > 0 else 0,
+                "pool": pool,
+                "winners": manual['winners_count'],
+                "1st": manual['r1'],
+                "2nd": manual['r2'],
+                "3rd": manual['r3'],
+                "4-10": manual['r4_10'],
+                "bottom": manual['bottom'],
+                "bottom_range": f"11-{manual['winners_count']}"
+            }
+
     # Fetch dynamic settings from DB with defaults
     comm_val = float(custom_comm) if custom_comm is not None else float(db.db_get_setting('PRIZE_COMMISSION', 10))
     win_pct = float(db.db_get_setting('PRIZE_WINNERS_PCT', 70))
@@ -269,39 +285,37 @@ def get_prize_breakdown(fee, slots, custom_comm=None):
     commission_multiplier = (100 - comm_val) / 100
     collection = fee * slots
     pool = int(collection * commission_multiplier)
-    commission_amt = collection - pool
     winners_count = int(slots * (win_pct / 100)) # Custom % winners
 
-    # 70% Winners Logic: 
-    # Ranks 11 to (70% of slots) get their entry fee back.
-    # Top 10 share the surplus.
+    # Step 1: Guarantee every winner gets at least their entry fee back
+    total_base_cost = winners_count * fee
     
-    refund_winners = max(0, winners_count - 10)
-    refund_total = refund_winners * fee
+    # Safety check: if pool is too small for winner %, reduce winner count
+    if total_base_cost > pool:
+        winners_count = pool // fee
+        total_base_cost = winners_count * fee
+
+    # Step 2: Calculate Surplus (extra money above the entry fee refunds)
+    surplus = pool - total_base_cost
     
-    # Surplus calculation with safety check
-    surplus_pool = max(100, pool - refund_total)
-    
-    # Distribution of surplus among Top 10
-    # Ranks 4-10 share the remaining surplus after Top 3
     top3_total_pct = r1_pct + r2_pct + r3_pct
     remaining_pct = max(0, 100 - top3_total_pct)
 
     prizes = {
-        "1st": int(surplus_pool * (r1_pct / 100)),
-        "2nd": int(surplus_pool * (r2_pct / 100)),
-        "3rd": int(surplus_pool * (r3_pct / 100)),
-        "4-10": int((surplus_pool * (remaining_pct / 100)) / 7)
+        "1st": fee + int(surplus * (r1_pct / 100)),
+        "2nd": fee + int(surplus * (r2_pct / 100)),
+        "3rd": fee + int(surplus * (r3_pct / 100)),
+        "4-10": fee + int((surplus * (remaining_pct / 100)) / 7)
     }
     return {
-        "collection": collection, "commission_amt": commission_amt, "comm_pct": comm_val,
+        "collection": collection, "commission_amt": collection - pool, "comm_pct": comm_val,
         "pool": pool, "winners": winners_count, 
         "1st": prizes["1st"], "2nd": prizes["2nd"], "3rd": prizes["3rd"],
         "4-10": prizes["4-10"], "bottom": fee, "bottom_range": f"11-{winners_count}"
     }
 
 def prize_breakdown_render(match_id, fee, slots):
-    breakdown = get_prize_breakdown(fee, slots)
+    breakdown = get_prize_breakdown(fee, slots, match_id=match_id)
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🔙 Back to Match", callback_data=f"show_match_{match_id}"))
     

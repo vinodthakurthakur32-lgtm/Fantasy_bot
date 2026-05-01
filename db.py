@@ -96,6 +96,17 @@ def init_db():
             match_id VARCHAR(255), entry_fee INTEGER, max_slots INTEGER,
             PRIMARY KEY (match_id, entry_fee)
         )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS MANUAL_PRIZES (
+            match_id VARCHAR(255),
+            entry_fee INTEGER,
+            r1 INTEGER,
+            r2 INTEGER,
+            r3 INTEGER,
+            r4_10 INTEGER,
+            bottom INTEGER,
+            winners_count INTEGER,
+            PRIMARY KEY (match_id, entry_fee)
+        )''')
         c.execute('''CREATE TABLE IF NOT EXISTS SETTINGS (
             key VARCHAR(255) PRIMARY KEY,
             value TEXT
@@ -171,6 +182,21 @@ def db_get_contest_config(mid, fee):
         c.execute("SELECT * FROM CONTEST_CONFIG WHERE match_id=%s AND entry_fee=%s", (mid, fee))
         return c.fetchone()
 
+def db_set_manual_prizes(mid, fee, r1, r2, r3, r4_10, bottom, winners):
+    with get_db() as c:
+        c.execute("""
+            INSERT INTO MANUAL_PRIZES (match_id, entry_fee, r1, r2, r3, r4_10, bottom, winners_count)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (match_id, entry_fee) DO UPDATE SET
+            r1=EXCLUDED.r1, r2=EXCLUDED.r2, r3=EXCLUDED.r3, r4_10=EXCLUDED.r4_10, 
+            bottom=EXCLUDED.bottom, winners_count=EXCLUDED.winners_count
+        """, (mid, fee, r1, r2, r3, r4_10, bottom, winners))
+
+def db_get_manual_prizes(mid, fee):
+    with get_db() as c:
+        c.execute("SELECT * FROM MANUAL_PRIZES WHERE match_id=%s AND entry_fee=%s", (mid, fee))
+        return c.fetchone()
+
 def db_delete_contest(mid, fee):
     """Admin can remove a specific contest configuration"""
     with get_db() as c:
@@ -181,12 +207,12 @@ def db_get_all_contest_configs(mid):
         c.execute("SELECT * FROM CONTEST_CONFIG WHERE match_id=%s", (mid,))
         return c.fetchall()
 
-def db_add_match(mid, name, m_type, deadline, points_calculated=0):
+def db_add_match(mid, name, m_type, deadline, points_calculated=0, manual_lock=0):
     with get_db() as c:
         c.execute("""
-            INSERT INTO MATCHES_LIST (match_id, name, type, deadline, points_calculated) VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (match_id) DO UPDATE SET name = EXCLUDED.name, type = EXCLUDED.type, deadline = EXCLUDED.deadline, points_calculated = EXCLUDED.points_calculated
-        """, (mid, name, m_type, deadline, points_calculated))
+            INSERT INTO MATCHES_LIST (match_id, name, type, deadline, points_calculated, manual_lock) VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (match_id) DO UPDATE SET name = EXCLUDED.name, type = EXCLUDED.type, deadline = EXCLUDED.deadline, points_calculated = EXCLUDED.points_calculated, manual_lock = EXCLUDED.manual_lock
+        """, (mid, name, m_type, deadline, points_calculated, manual_lock))
 
 def db_get_matches():
     with get_db() as c:
@@ -209,7 +235,7 @@ def run_migrations():
                 ("is_paid", "INTEGER DEFAULT 0"),
                 ("points", "INTEGER DEFAULT 0")
             ],
-            "MATCHES_LIST": [("points_calculated", "INTEGER DEFAULT 0")],
+            "MATCHES_LIST": [("points_calculated", "INTEGER DEFAULT 0"), ("manual_lock", "INTEGER DEFAULT 0")],
             "PLAYERS": [("team", "TEXT DEFAULT 'N/A'")]
         }
         for table, cols in migrations.items():
@@ -419,15 +445,34 @@ def db_get_match_financials(match_id):
 def get_contest_stats(match_id, entry_fee=100):
     """Fetches real-time participation stats for a match dashboard"""
     with get_db() as c:
+        # Real count from database
         c.execute("SELECT COUNT(*) FROM TEAMS WHERE match_id=%s AND is_paid=1", (match_id,))
-        total_joined = c.fetchone()['count']
+        real_joined = c.fetchone()['count']
+
+        # Fetch Fake Base from settings
+        c.execute("SELECT value FROM SETTINGS WHERE key='FAKE_PARTICIPANTS_BASE'")
+        row = c.fetchone()
+        fake_base = int(row['value']) if row else 0
 
         c.execute("SELECT max_slots FROM CONTEST_CONFIG WHERE match_id=%s AND entry_fee=%s", (match_id, entry_fee))
         cfg = c.fetchone()
         max_slots = cfg['max_slots'] if cfg else 50 # Default 50 slots
         
-        # Prize pool calculated based on max slots (Mega Contest logic)
-        prize_pool = max_slots * entry_fee * 0.9 # 90% payout
+        # Check for manual prize pool override
+        c.execute("SELECT * FROM MANUAL_PRIZES WHERE match_id=%s AND entry_fee=%s", (match_id, entry_fee))
+        manual = c.fetchone()
+        if manual:
+            prize_pool = manual['r1'] + manual['r2'] + manual['r3'] + (manual['r4_10'] * 7) + (manual['bottom'] * (manual['winners_count'] - 10))
+        else:
+            # Fallback to automatic 90% payout logic
+            prize_pool = max_slots * entry_fee * 0.9
+            
+        # Agar fake_base 0 hai toh asli data dikhao, warna marketing logic lagao
+        if fake_base > 0:
+            total_joined = min(real_joined + fake_base, max_slots - 1) # Always leave at least 1 spot open
+        else:
+            total_joined = real_joined
+            
         return {"joined": total_joined, "max_slots": max_slots, "prize_pool": int(prize_pool)}
 
 def get_user_match_summary(user_id, match_id):
@@ -648,3 +693,17 @@ def db_mark_points_calculated(match_id):
     """Marks a match as having its points calculated"""
     with get_db() as c:
         c.execute("UPDATE MATCHES_LIST SET points_calculated = 1 WHERE match_id = %s", (match_id,))
+
+def db_set_manual_lock(match_id, status):
+    """0: Auto, 1: Force Lock, -1: Force Unlock"""
+    with get_db() as c:
+        c.execute("UPDATE MATCHES_LIST SET manual_lock = %s WHERE match_id = %s", (status, match_id))
+
+def db_set_player_stats_absolute(match_id, player_name, runs=None, wickets=None):
+    """Directly sets total runs/wickets instead of incrementing"""
+    with get_db() as c:
+        if runs is not None:
+            c.execute("INSERT INTO PLAYER_LIVE_STATS (match_id, player_name, runs) VALUES (%s,%s,%s) ON CONFLICT(match_id, player_name) DO UPDATE SET runs = EXCLUDED.runs", (match_id, player_name, runs))
+        if wickets is not None:
+            c.execute("INSERT INTO PLAYER_LIVE_STATS (match_id, player_name, wickets) VALUES (%s,%s,%s) ON CONFLICT(match_id, player_name) DO UPDATE SET wickets = EXCLUDED.wickets", (match_id, player_name, wickets))
+    return True
