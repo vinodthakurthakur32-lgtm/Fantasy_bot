@@ -131,15 +131,9 @@ def admin_help_render():
 
 🏏 <b>MATCH &amp; PLAYER MANAGEMENT</b>
 • <code>/add_match</code> - Naya match create karein
-  <i>Ex: <code>m1 | CSK vs MI | IPL | 2026-05-01 19:30</code></i>
 • <code>/add_player</code> - Players add karein
-  <i>Ex (Bulk):</i>
-  <code>
-  m1
-  Virat Kohli | bat
-  MS Dhoni | wk
-  </code>
-  <i>Ex (Single): <code>m1 | Rohit Sharma | bat</code></i>
+  <i>Horizontal Format: <code>m1</code> (enter) <code>Name | w, Name | bat</code></i>
+• <code>/setup_contests</code> - Mega/Med/Small setup karein
 • <code>/delete_player</code> - Player ko match se hatayein
   <i>Ex: <code>m1 | Rohit Sharma</code></i>
 • <code>/my_matches</code> - Matches list aur manage karein (Add/View/Delete)
