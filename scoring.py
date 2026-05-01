@@ -33,15 +33,18 @@ def update_match_event(match_id, player_name, event_type):
         
         for team in teams:
             players_data = json.loads(team['team_players'])
-            flat_list = []
+            raw_team_names = []
             for role in players_data:
-                flat_list.extend(players_data[role])
+                # Ensure we strip any team info or tags from stored team data
+                raw_team_names.extend([p.split(' (')[0].strip() for p in players_data[role]])
             
-            if player_name in flat_list:
+            if player_name in raw_team_names:
                 # Multiply if Captain/VC
                 multiplier = 1.0
-                if player_name == team['captain']: multiplier = CAPTAIN_MULTIPLIER
-                elif player_name == team['vice_captain']: multiplier = VC_MULTIPLIER
+                raw_c = team['captain'].split(' (')[0].strip() if team['captain'] else ""
+                raw_vc = team['vice_captain'].split(' (')[0].strip() if team['vice_captain'] else ""
+                if player_name == raw_c: multiplier = CAPTAIN_MULTIPLIER
+                elif player_name == raw_vc: multiplier = VC_MULTIPLIER
                 
                 final_points = points * multiplier
                 conn.execute("UPDATE TEAMS SET points = points + %s WHERE user_id=%s AND match_id=%s AND team_num=%s",
