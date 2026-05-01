@@ -121,52 +121,52 @@ def admin_help_render():
     markup.add(types.InlineKeyboardButton("🔙 BACK TO DASHBOARD", callback_data="adm_nav_home"))
     
     text = """
-🛠 *ADMIN MASTER CONTROL GUIDE*
+🛠 <b>ADMIN MASTER CONTROL GUIDE</b>
 ━━━━━━━━━━━━━━━━━━━━
 
-🎮 *CORE CONTROLS*
-• `/admin_panel` - Dashboard open karein
-• `/broadcast` - Sabhi users ko message ya photo bhein
-• `/export_data` - Pura backup CSV format mein lein
+🎮 <b>CORE CONTROLS</b>
+• <code>/admin_panel</code> - Dashboard open karein
+• <code>/broadcast</code> - Sabhi users ko message ya photo bhein
+• <code>/export_data</code> - Pura backup CSV format mein lein
 
-🏏 *MATCH & PLAYER MANAGEMENT*
-• `/add_match` - Naya match create karein
-  _Ex: `m1 | CSK vs MI | IPL | 2026-05-01 19:30`_
-• `/add_player` - Players add karein
-  _Ex (Bulk):_
-  ```
+🏏 <b>MATCH &amp; PLAYER MANAGEMENT</b>
+• <code>/add_match</code> - Naya match create karein
+  <i>Ex: <code>m1 | CSK vs MI | IPL | 2026-05-01 19:30</code></i>
+• <code>/add_player</code> - Players add karein
+  <i>Ex (Bulk):</i>
+  <code>
   m1
   Virat Kohli | bat
   MS Dhoni | wk
-  ```
-  _Ex (Single): `m1 | Rohit Sharma | bat`_
-• `/delete_player` - Player ko match se hatayein
-  _Ex: `m1 | Rohit Sharma`_
-• `/my_matches` - Matches list aur manage karein (Add/View/Delete)
-• `/list_players` - Match ke players list karein
-  _Ex: `/list_players m1`_
+  </code>
+  <i>Ex (Single): <code>m1 | Rohit Sharma | bat</code></i>
+• <code>/delete_player</code> - Player ko match se hatayein
+  <i>Ex: <code>m1 | Rohit Sharma</code></i>
+• <code>/my_matches</code> - Matches list aur manage karein (Add/View/Delete)
+• <code>/list_players</code> - Match ke players list karein
+  <i>Ex: <code>/list_players m1</code></i>
 
-🏆 *CONTESTS & PRIZES*
-• `/set_contest_size` - Contest config set karein
-  _Ex: `m1 | 100 | 50` (match_id | entry_fee | max_slots)_
-• `/delete_contest` - Kisi contest ko remove karein
-  _Ex: `m1 | 20`_
-• `/set_prize_config` - Global prize logic (Commission | Win% | R1 | R2 | R3)
-  _Ex: `10 | 70 | 35 | 20 | 12`_
+🏆 <b>CONTESTS &amp; PRIZES</b>
+• <code>/set_contest_size</code> - Contest config set karein
+  <i>Ex: <code>m1 | 100 | 50</code> (match_id | entry_fee | max_slots)</i>
+• <code>/delete_contest</code> - Kisi contest ko remove karein
+  <i>Ex: <code>m1 | 20</code></i>
+• <code>/set_prize_config</code> - Global prize logic (Commission | Win% | R1 | R2 | R3)
+  <i>Ex: <code>10 | 70 | 35 | 20 | 12</code></i>
 
-📈 *LIVE SCORING (REAL-TIME)*
-• `/up` - Fast point update
-  _Ex: `/up Kohli 50` (Active match use karta hai)_
-  _Ex: `/up m1 | Kohli:50, Dhoni:20` (Bulk update)_
-• `/myrank` - Kisi bhi match ka live rank check karein (User command)
+📈 <b>LIVE SCORING (REAL-TIME)</b>
+• <code>/up</code> - Fast point update
+  <i>Ex: <code>/up Kohli 50</code> (Active match use karta hai)</i>
+  <i>Ex: <code>/up m1 | Kohli:50, Dhoni:20</code> (Bulk update)</i>
+• <code>/myrank</code> - Kisi bhi match ka live rank check karein (User command)
 
-⚙️ *SYSTEM SETTINGS*
-• `/set_handle` - Support/Channel/Channel IDs update karein
-  _Ex: `SUPPORT | @my_support_handle`_
-• `/rules` - Scoring system aur multipliers dekhein (User command)
-• `/clear_database` - ⚠️ Purana test data saaf karein (Irreversible)
+⚙️ <b>SYSTEM SETTINGS</b>
+• <code>/set_handle</code> - Support/Channel/Channel IDs update karein
+  <i>Ex: <code>SUPPORT | @my_support_handle</code></i>
+• <code>/rules</code> - Scoring system aur multipliers dekhein (User command)
+• <code>/clear_database</code> - ⚠️ Purana test data saaf karein (Irreversible)
 ━━━━━━━━━━━━━━━━━━━━
-💡 _Sare commands direct chat mein type karein ya Dashboard buttons ka use karein._"""
+💡 <i>Sare commands direct chat mein type karein ya Dashboard buttons ka use karein.</i>"""
     return markup, text
 
 def admin_funnel_render(funnel_counts):
