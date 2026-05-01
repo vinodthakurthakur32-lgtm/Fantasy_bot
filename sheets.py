@@ -59,7 +59,7 @@ def init_sheets():
                     "client_x509_cert_url": os.getenv("G_CERT_URL"),
                     "universe_domain": "googleapis.com"
                 }
-            elif raw_creds:
+            elif raw_creds and isinstance(raw_creds, str):
                 try:
                     creds_info = json.loads(raw_creds.strip().strip("'").strip('"'))
                 except Exception as e:
