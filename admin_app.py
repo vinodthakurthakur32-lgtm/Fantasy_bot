@@ -126,4 +126,4 @@ def handle_admin_nav(call, bot):
     elif nav == "adm_nav_help":
         bot.answer_callback_query(call.id)
         markup, text = ui.admin_help_render()
-        bot.edit_message_text(text, chat_id, mid, reply_markup=markup, parse_mode='HTML')
+        bot.edit_message_text(text, chat_id, mid, reply_markup=markup, parse_mode='HTML', disable_web_page_preview=True)
