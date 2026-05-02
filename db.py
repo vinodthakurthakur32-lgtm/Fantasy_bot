@@ -241,6 +241,12 @@ def db_get_all_contest_configs(mid):
         c.execute("SELECT * FROM CONTEST_CONFIG WHERE match_id=%s", (mid,))
         return c.fetchall()
 
+def db_cleanup_unpaid_teams(match_id):
+    """Deletes all teams for a match that were never paid/joined"""
+    with get_db() as c:
+        c.execute("DELETE FROM TEAMS WHERE match_id=%s AND is_paid=0", (match_id,))
+    logging.info(f"🧹 Cleanup: Unpaid teams removed for match {match_id}")
+
 def db_add_match(mid, name, m_type, deadline, points_calculated=0, manual_lock=0):
     with get_db() as c:
         c.execute("""
