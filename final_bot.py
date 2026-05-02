@@ -945,6 +945,11 @@ def cmd_contest(msg):
         has_any_team = bool(row)
 
     for mid, info in MATCHES.items():
+        # Agar match settle ho chuka hai (points calculate ho gaye), 
+        # toh use active contest list mein mat dikhao.
+        if info.get('points_calculated'):
+            continue
+            
         deadline = info['deadline']
         day_str = "TODAY" if deadline.date() == now.date() else "TOMORROW" if deadline.date() == (now.date() + timedelta(days=1)) else deadline.strftime('%d %b')
         
@@ -2769,6 +2774,10 @@ def process_match_end(match_id):
         
         if calculate_all_points(match_id, player_live_scores_map):
             db.db_mark_points_calculated(match_id) # DB mein mark karein
+            
+            # 🧹 Cleanup: Unpaid teams ko delete karo kyunki match khatam ho gaya hai
+            db.db_cleanup_unpaid_teams(match_id)
+            
             MATCHES[match_id]['points_calculated'] = True # Memory cache mein update karein
             bot.send_message(ADMIN_ID, f"✅ <b>Points Calculated for Match: {html.escape(MATCHES[match_id]['name'])}</b>", parse_mode='HTML')
             logging.info(f"✅ Points calculation completed for match: {match_id}")
