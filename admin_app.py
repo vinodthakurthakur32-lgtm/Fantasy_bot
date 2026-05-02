@@ -90,6 +90,22 @@ def handle_admin_nav(call, bot):
         markup, text = ui.admin_fraud_render(data)
         bot.edit_message_text(text, chat_id, mid, reply_markup=markup, parse_mode='HTML')
 
+    elif nav == "adm_nav_recent":
+        bot.answer_callback_query(call.id)
+        users = db.db_get_recent_users_stats(10)
+        text = "👥 <b>RECENT USERS & ACTIVITY</b>\n\n"
+        if not users:
+            text += "No recent users found."
+        for u in users:
+            uname = f"@{u['username']}" if u['username'] else "N/A"
+            text += (f"👤 <b>{html.escape(u['first_name'])}</b> ({uname})\n"
+                     f"🆔 <code>{u['user_id']}</code>\n"
+                     f"📅 Joined: {u['joined_date'][5:16]}\n"
+                     f"⚾ Teams: <code>{u['team_count']}</code>\n\n")
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("🔙 Back", callback_data="adm_nav_home"))
+        bot.edit_message_text(text, chat_id, mid, reply_markup=markup, parse_mode='HTML')
+
     elif nav.startswith("adm_fin_"):
         bot.answer_callback_query(call.id)
         match_id = nav.split("_")[2]
