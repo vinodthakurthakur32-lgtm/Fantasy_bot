@@ -16,6 +16,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Simple In-memory cache for settings to improve speed
 _settings_cache = {}
+_manual_prizes_cache = {}
 
 @contextmanager
 def get_db():
@@ -204,11 +205,31 @@ def db_set_manual_prizes(mid, fee, r1, r2, r3, r4_10, bottom, winners):
             r1=EXCLUDED.r1, r2=EXCLUDED.r2, r3=EXCLUDED.r3, r4_10=EXCLUDED.r4_10, 
             bottom=EXCLUDED.bottom, winners_count=EXCLUDED.winners_count
         """, (mid, fee, r1, r2, r3, r4_10, bottom, winners))
+    # Invalidate cache
+    cache_key = f"{mid}_{fee}"
+    if cache_key in _manual_prizes_cache:
+        del _manual_prizes_cache[cache_key]
 
 def db_get_manual_prizes(mid, fee):
+    cache_key = f"{mid}_{fee}"
+    if cache_key in _manual_prizes_cache:
+        return _manual_prizes_cache[cache_key]
     with get_db() as c:
         c.execute("SELECT * FROM MANUAL_PRIZES WHERE match_id=%s AND entry_fee=%s", (mid, fee))
-        return c.fetchone()
+        res = c.fetchone()
+        _manual_prizes_cache[cache_key] = res
+        return res
+
+def db_get_recent_users_stats(limit=10):
+    """Fetches recently joined users and their team counts without file download"""
+    with get_db() as c:
+        c.execute("""
+            SELECT u.user_id, u.first_name, u.username, u.joined_date,
+            (SELECT COUNT(*) FROM TEAMS WHERE user_id = u.user_id AND team_saved=1) as team_count
+            FROM USERS u
+            ORDER BY u.joined_date DESC LIMIT %s
+        """, (limit,))
+        return c.fetchall()
 
 def db_delete_contest(mid, fee):
     """Admin can remove a specific contest configuration"""
@@ -461,14 +482,10 @@ def get_contest_stats(match_id, entry_fee=100):
     """Fetches real-time participation stats for a match dashboard"""
     with get_db() as c:
         # Real count from database
-        c.execute("SELECT COUNT(*) FROM TEAMS WHERE match_id=%s AND is_paid=1", (match_id,))
+        c.execute("SELECT COUNT(*) as count FROM TEAMS WHERE match_id=%s AND is_paid=1", (match_id,))
         real_joined = c.fetchone()['count']
 
-        # Fetch Fake Base from settings
-        c.execute("SELECT value FROM SETTINGS WHERE key='FAKE_PARTICIPANTS_BASE'")
-        row = c.fetchone()
-        fake_base = int(row['value']) if row else 0
-
+        fake_base = int(db_get_setting('FAKE_PARTICIPANTS_BASE', 0))
         c.execute("SELECT max_slots FROM CONTEST_CONFIG WHERE match_id=%s AND entry_fee=%s", (match_id, entry_fee))
         cfg = c.fetchone()
         max_slots = cfg['max_slots'] if cfg else 50 # Default 50 slots
@@ -484,7 +501,7 @@ def get_contest_stats(match_id, entry_fee=100):
             
         # Agar fake_base 0 hai toh asli data dikhao, warna marketing logic lagao
         if fake_base > 0:
-            total_joined = min(real_joined + fake_base, max_slots - 1) # Always leave at least 1 spot open
+            total_joined = min(real_joined + fake_base, max_slots) 
         else:
             total_joined = real_joined
             
