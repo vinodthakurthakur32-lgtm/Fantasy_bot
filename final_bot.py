@@ -462,9 +462,9 @@ def start_command(message):
         "🎯 <b>Kaise jeetein:</b>\n"
         "1️⃣ Team banao (11 players)\n"
         "2️⃣ Captain/VC set karo\n"
-        "3️⃣ Contest join karo\n\n"
+        "3️⃣ Battle join karo\n\n"
         f"📈 <b>Min Withdrawal:</b> ₹{MIN_WITHDRAWAL}\n"
-        f"🔥 <b>Next:</b> Click <b>🏆 CONTEST</b> niche menu se match select karne ke liye!"
+        f"🔥 <b>Next:</b> Click <b>🏆 BATTLES</b> niche menu se match select karne ke liye!"
     )
     bot.send_message(message.chat.id, brief, reply_markup=markup, parse_mode='HTML')
     bot.send_message(message.chat.id, "👇 <b>Updates aur Winner Screenshots ke liye join karein:</b>", reply_markup=inline_markup, parse_mode='HTML')
@@ -769,7 +769,7 @@ def callback_view_team(call):
         markup.add(types.InlineKeyboardButton("🎯 SET/CHANGE C & VC", callback_data=f"set_cv_menu_{match_id}_{team_num}"))
         
         if team.get('captain') and team.get('vice_captain') and not team.get('is_paid'):
-            markup.add(types.InlineKeyboardButton("🚀 JOIN CONTEST NOW", callback_data=f"show_match_{match_id}"))
+            markup.add(types.InlineKeyboardButton("🚀 JOIN BATTLE NOW", callback_data=f"show_match_{match_id}"))
             
         if not team.get('is_paid'):
             markup.add(types.InlineKeyboardButton("🗑️ DELETE TEAM", callback_data=f"del_team_ask_{match_id}_{team_num}"))
@@ -930,8 +930,8 @@ def callback_delete_team_confirm(call):
 # CONTEST
 # ===================================================
 
-@bot.message_handler(commands=['contest'])
-@bot.message_handler(func=lambda m: "CONTEST" in m.text)
+@bot.message_handler(commands=['battles', 'contest'])
+@bot.message_handler(func=lambda m: m.text and "BATTLES" in m.text)
 def cmd_contest(msg):
     uid = str(msg.from_user.id)
     markup = types.InlineKeyboardMarkup(row_width=1)
@@ -959,7 +959,7 @@ def cmd_contest(msg):
             status = f"🏏 [{info['type']}] {day_str} {deadline.strftime('%H:%M')}"
         markup.add(types.InlineKeyboardButton(f"{status} {info['name']} - {get_time_left(mid)}", callback_data=f"show_match_{mid}"))
     
-    text = "🏆 *Matches*\n\n👉 *Next: Select a match to join contests*"
+    text = "🏆 *Matches*\n\n👉 *Next: Select a match to join BATTLES*"
     if not has_any_team:
         text += "\n\n⚠️ *No team?*\n👉 Pehle team banao"
         markup.add(types.InlineKeyboardButton("🏏 CREATE TEAM", callback_data="cmd_my_team_nav"))
@@ -1003,7 +1003,7 @@ def callback_join_match(call):
 
     markup.add(*buttons)
     markup.add(types.InlineKeyboardButton("⬅️ BACK", callback_data=f"show_match_{match_id}"))
-    bot.edit_message_text(f"🏅 *Join Contest* (Entry: ₹{fee})\nSelect the Team Slot you want to use:", 
+    bot.edit_message_text(f"🏅 *Join Battle* (Entry: ₹{fee})\nSelect the Team Slot you want to use:", 
                          call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode='Markdown')
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("confirm_join_"))
@@ -1123,7 +1123,7 @@ def process_contest_size(msg):
         parts = [p.strip() for p in msg.text.split("|")]
         mid, fee, slots = parts[0], int(parts[1]), int(parts[2])
         db.db_set_contest_config(mid, fee, slots)
-        bot.reply_to(msg, f"✅ *Contest Configured!*\nMatch: `{mid}`\nFee: ₹{fee}\nMax Slots: {slots}\n\nAb users ko 70% winners wala breakup dikhega.")
+        bot.reply_to(msg, f"✅ *Battle Configured!*\nMatch: `{mid}`\nFee: ₹{fee}\nMax Slots: {slots}\n\nAb users ko 70% winners wala breakup dikhega.")
     except Exception as e:
         bot.reply_to(msg, "❌ Error! Use format: `mid | fee | slots`")
 
@@ -2356,8 +2356,13 @@ def handle_selection(call):
 
     # FIX 3: Persistence for selection
     temp_team_cache[cache_key] = team
-    # Refresh UI instantly
-    show_player_selection(call.message.chat.id, uid, role, match_id, team_num, call.message.message_id)
+    
+    # OPTIMIZATION: Sirf markup update karein agar text change ki zarurat nahi hai
+    # Isse UI flicker kam hota hai
+    try:
+        show_player_selection(call.message.chat.id, uid, role, match_id, team_num, call.message.message_id)
+    except Exception as e:
+        logging.error(f"UI Update Error: {e}")
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_catchall(call):
@@ -2888,10 +2893,11 @@ def calculate_all_points(match_id, player_scores):
                 contest_teams = [r for r in all_paid_teams if abs(int(r['entry_fee'])) == fee]
                 contest_teams.sort(key=lambda x: x['points'], reverse=True)
                 
-                # Get Prize Breakdown for this tier
-                config = db.db_get_contest_config(match_id, fee)
-                slots = config['max_slots'] if config else 50
-                bd = ui.get_prize_breakdown(fee, slots)
+                # FIX: Use ACTUAL count instead of MAX slots for fair admin payout
+                actual_participants = len(contest_teams)
+                # Max slots are still used as a fallback or for custom breakdown logic
+                # but calculating breakdown based on actual joined players prevents loss.
+                bd = ui.get_prize_breakdown(fee, actual_participants, match_id=match_id)
                 
                 for index, res in enumerate(contest_teams):
                     rank = index + 1
@@ -2900,8 +2906,10 @@ def calculate_all_points(match_id, player_scores):
                     if rank == 1: prize_amt = bd['1st']
                     elif rank == 2: prize_amt = bd['2nd']
                     elif rank == 3: prize_amt = bd['3rd']
-                    elif 4 <= rank <= 10: prize_amt = bd['4-10']
-                    elif 11 <= rank <= bd['winners']: prize_amt = bd['bottom']
+                    elif rank == 4: prize_amt = bd['4th']
+                    elif rank == 5: prize_amt = bd['5th']
+                    elif 6 <= rank <= 10: prize_amt = bd.get('6-10', bd['bottom'])
+                    elif rank > 10 and rank <= bd['winners']: prize_amt = bd['bottom']
                     
                     prize_text = f"₹{prize_amt}" if prize_amt > 0 else "₹0"
                     
