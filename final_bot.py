@@ -1027,6 +1027,7 @@ def callback_show_match(call):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("breakup_"))
 def callback_prize_breakup(call):
+    bot.answer_callback_query(call.id) # Immediate feedback to remove loading state
     parts = call.data.split("_")
     match_id, fee = parts[1], int(parts[2])
     
@@ -1038,7 +1039,24 @@ def callback_prize_breakup(call):
     try:
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode='Markdown')
     except:
-        bot.answer_callback_query(call.id, "Error loading breakup.")
+            pass
+
+@bot.message_handler(commands=['set_fake_count'])
+def cmd_set_fake_count(msg):
+    """Admin can manually set the fake participant base number"""
+    if not is_admin(msg.from_user.id): return
+    
+    parts = msg.text.split()
+    if len(parts) < 2:
+        bot.reply_to(msg, "❌ Format: `/set_fake_count 50`", parse_mode='Markdown')
+        return
+        
+    try:
+        count = int(parts[1])
+        db.db_set_setting('FAKE_PARTICIPANTS_BASE', count)
+        bot.reply_to(msg, f"✅ *Fake count set to:* `{count}`\nAb ye count contest dashboard par display hoga.", parse_mode='Markdown')
+    except ValueError:
+        bot.reply_to(msg, "❌ Kripya valid number bhein.")
 
 @bot.message_handler(commands=['set_contest_size'])
 def cmd_set_contest_size(msg):
