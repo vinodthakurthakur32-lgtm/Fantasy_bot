@@ -1030,6 +1030,30 @@ def callback_show_match(call):
     markup, text = ui.match_dashboard_render(mid, info, stats, user_summary, time_left, configs, default_fee)
     bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode='Markdown')
 
+@bot.message_handler(commands=['set_manual_prizes'])
+def cmd_set_manual_prizes(msg):
+    if not is_admin(msg.from_user.id): return
+    help_text = (
+        "🏆 *SET MANUAL PRIZES*\n\n"
+        "Format: `mid | fee | R1 | R2 | R3 | R4_10 | Bottom | Winners` \n\n"
+        "Example: `m1 | 100 | 500 | 300 | 200 | 50 | 100 | 50` \n"
+        "_(Note: Bottom prize un winners ko milega jo rank 11 se lekar Total Winners tak aayenge)_"
+    )
+    sent = bot.send_message(msg.chat.id, help_text, parse_mode='Markdown')
+    bot.register_next_step_handler(sent, process_manual_prizes_input)
+
+def process_manual_prizes_input(msg):
+    try:
+        parts = [p.strip() for p in msg.text.split("|")]
+        if len(parts) < 8:
+            bot.reply_to(msg, "❌ Format galat hai! 8 values (values separate by |) zaroori hain.")
+            return
+        mid, fee, r1, r2, r3, r4_10, bottom, winners = parts[0], int(parts[1]), int(parts[2]), int(parts[3]), int(parts[4]), int(parts[5]), int(parts[6]), int(parts[7])
+        db.db_set_manual_prizes(mid, fee, r1, r2, r3, r4_10, bottom, winners)
+        bot.reply_to(msg, f"✅ Manual prizes updated for match `{mid}` (Entry: ₹{fee})!")
+    except Exception as e:
+        bot.reply_to(msg, f"❌ Error: {e}\nFormat: `mid | fee | R1 | R2 | R3 | R4_10 | Bottom | Winners` use karein.")
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith("breakup_"))
 def callback_prize_breakup(call):
     bot.answer_callback_query(call.id) # Immediate feedback to remove loading state
