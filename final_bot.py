@@ -2277,7 +2277,7 @@ def process_bulk_scoring(msg, match_id):
                 runs, wkts = int(parts[1]), int(parts[2])
                 
                 # Set absolute values in DB (with clean bonus reset)
-                if db.db_set_player_stats_absolute(match_id, p_name, runs, wickets):
+                if db.db_set_player_stats_absolute(match_id, p_name, runs, wkts):
                     success_count += 1
                 else:
                     skipped_players.append(p_name)
