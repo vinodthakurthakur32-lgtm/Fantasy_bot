@@ -2737,25 +2737,6 @@ def callback_catchall(call):
     if call.data == "start_support":
         cmd_support(call.message)
         return
-    # Route Scoring events
-    if call.data.startswith("evt|"):
-        parts = call.data.split("|")
-        match_id, p_name, event = parts[1], parts[2], parts[3]
-        
-        # 1. Fast Player Stat Update (Synchronous)
-        scoring.update_player_stat_only(match_id, p_name, event)
-        bot.answer_callback_query(call.id, "⚡ Score Updated!")
-
-        # 2. Heavy Team Points Update (Background Thread)
-        threading.Thread(target=scoring.update_team_points_incrementally, args=(match_id, p_name, event)).start()
-        
-        # 3. Immediate UI Refresh
-        import admin_app
-        players_data = get_players(match_id)
-        stats_map = db.db_get_player_live_stats_map(match_id)
-        markup = admin_app.admin_event_markup(match_id, players_data, stats_map=stats_map, is_locked=True)
-        bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=markup)
-        return
 
     logging.info(f"Unmatched callback: {call.data}")
 
