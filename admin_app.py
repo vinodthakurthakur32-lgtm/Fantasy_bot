@@ -40,10 +40,10 @@ def admin_event_markup(match_id, players, active_role='bat', is_locked=False, st
             markup.row(types.InlineKeyboardButton(f"👤 {p_display} {stats_label}", callback_data="ignore"))
             # Row 2: Incremental buttons
             markup.row(
-                types.InlineKeyboardButton("+1 R", callback_data=f"evt_{match_id}_{p_name.replace(' ', '_')}_run"),
-                types.InlineKeyboardButton("+4 R", callback_data=f"evt_{match_id}_{p_name.replace(' ', '_')}_four"),
-                types.InlineKeyboardButton("+6 R", callback_data=f"evt_{match_id}_{p_name.replace(' ', '_')}_six"),
-                types.InlineKeyboardButton("+1 W", callback_data=f"evt_{match_id}_{p_name.replace(' ', '_')}_wicket")
+                types.InlineKeyboardButton("+1 R", callback_data=f"evt|{match_id}|{p_name}|run"),
+                types.InlineKeyboardButton("+4 R", callback_data=f"evt|{match_id}|{p_name}|four"),
+                types.InlineKeyboardButton("+6 R", callback_data=f"evt|{match_id}|{p_name}|six"),
+                types.InlineKeyboardButton("+1 W", callback_data=f"evt|{match_id}|{p_name}|wicket")
             )
 
     # Match locked hai toh Result declare karne ka option dein
@@ -111,7 +111,7 @@ def handle_admin_nav(call, bot):
 
     elif nav == "adm_nav_get_user":
         bot.answer_callback_query(call.id)
-        final_bot.cmd_get_user_data(call.message)
+        final_bot.cmd_get_user_data(call.message, admin_id=call.from_user.id)
 
     elif nav.startswith("adm_fin_"):
         bot.answer_callback_query(call.id)
@@ -133,7 +133,8 @@ def handle_admin_nav(call, bot):
         match_id = "_".join(nav.split("_")[2:])
         
         players_data = final_bot.get_players(match_id) # Get players for this match
-        markup = admin_event_markup(match_id, players_data, is_locked=final_bot.is_match_locked(match_id))
+        stats_map = db.db_get_player_live_stats_map(match_id)
+        markup = admin_event_markup(match_id, players_data, is_locked=final_bot.is_match_locked(match_id), stats_map=stats_map)
         match_name = final_bot.MATCHES.get(match_id, {}).get('name', match_id)
         text = f"🎮 <b>LIVE SCORING: {html.escape(str(match_name))}</b>\n\nSelect player and event to update points."
         bot.edit_message_text(text, chat_id, mid, reply_markup=markup, parse_mode='HTML')
@@ -146,7 +147,8 @@ def handle_admin_nav(call, bot):
         match_id = "_".join(parts[2:-1])
         
         players_data = final_bot.get_players(match_id)
-        markup = admin_event_markup(match_id, players_data, active_role=role, is_locked=final_bot.is_match_locked(match_id))
+        stats_map = db.db_get_player_live_stats_map(match_id)
+        markup = admin_event_markup(match_id, players_data, active_role=role, is_locked=final_bot.is_match_locked(match_id), stats_map=stats_map)
         match_name = final_bot.MATCHES.get(match_id, {}).get('name', match_id)
         try:
             bot.edit_message_reply_markup(chat_id, mid, reply_markup=markup)
