@@ -756,16 +756,6 @@ def db_get_player_live_stats_map(match_id):
         rows = c.fetchall()
         return {r['player_name']: r for r in rows}
 
-def db_mark_points_calculated(match_id):
-    """Marks a match as having its points calculated"""
-    with get_db() as c:
-        c.execute("UPDATE MATCHES_LIST SET points_calculated = 1 WHERE match_id = %s", (match_id,))
-
-def db_mark_prizes_distributed(match_id):
-    """Marks a match as settled with prizes distributed (Status 2)"""
-    with get_db() as c:
-        c.execute("UPDATE MATCHES_LIST SET points_calculated = 2 WHERE match_id = %s", (match_id,))
-
 def db_set_manual_lock(match_id, status):
     """0: Auto, 1: Force Lock, -1: Force Unlock"""
     with get_db() as c:
@@ -855,6 +845,11 @@ def db_get_match_audit_data(match_id):
         c.execute("SELECT ABS(SUM(amount)) as total_in, COUNT(*) as entry_count FROM LEDGER WHERE reference_id LIKE %s AND type='DEBIT'", (search_debit,))
         debit_stats = c.fetchone()
 
+        # 1b. Total Refunds (Cancelled contests entries)
+        search_refund = f"REFUND_AUTO_{match_id}_%"
+        c.execute("SELECT COUNT(*) as refund_count FROM LEDGER WHERE reference_id LIKE %s AND type='CREDIT'", (search_refund,))
+        refunds = c.fetchone()['refund_count'] or 0
+
         # 2. Total Credits (Bot ne kitna prize baanta)
         search_credit = f"PRIZE_{match_id}_%"
         c.execute("SELECT SUM(amount) as total_out, COUNT(*) as winner_count FROM LEDGER WHERE reference_id LIKE %s AND type='CREDIT'", (search_credit,))
@@ -866,7 +861,7 @@ def db_get_match_audit_data(match_id):
 
         return {
             "in": float(debit_stats['total_in'] or 0),
-            "entries": debit_stats['entry_count'] or 0,
+            "entries": (debit_stats['entry_count'] or 0) - refunds,
             "out": float(credit_stats['total_out'] or 0),
             "winners": credit_stats['winner_count'] or 0,
             "db_paid_teams": paid_teams_count
