@@ -163,6 +163,17 @@ def init_db():
             created_at TEXT,
             resolved_at TEXT
         )''')
+        # 5. USER_RESULTS Table (Match History)
+        c.execute('''CREATE TABLE IF NOT EXISTS USER_RESULTS (
+            id SERIAL PRIMARY KEY,
+            user_id VARCHAR(255),
+            match_id VARCHAR(255),
+            team_num INTEGER,
+            points NUMERIC,
+            rank INTEGER,
+            prize TEXT,
+            timestamp TEXT
+        )''')
 
 def db_set_setting(key, value):
     with get_db() as c:
