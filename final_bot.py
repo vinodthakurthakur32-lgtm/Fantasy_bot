@@ -2700,8 +2700,8 @@ def callback_catchall(call):
         cmd_support(call.message)
         return
     # Route Scoring events
-    if call.data.startswith("evt_"):
-        parts = call.data.split("_")
+    if call.data.startswith("evt|"):
+        parts = call.data.split("|")
         scoring.update_match_event(parts[1], parts[2], parts[3])
         bot.answer_callback_query(call.id, "✅ Point Updated!")
         return
