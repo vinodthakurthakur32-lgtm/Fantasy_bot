@@ -766,13 +766,23 @@ def db_set_manual_lock(match_id, status):
     with get_db() as c:
         c.execute("UPDATE MATCHES_LIST SET manual_lock = %s WHERE match_id = %s", (status, match_id))
 
-def db_set_player_stats_absolute(match_id, player_name, runs=None, wickets=None):
-    """Directly sets total runs/wickets instead of incrementing"""
+def db_set_player_stats_absolute(match_id, player_name, runs, wickets):
+    """Clean overwrite for both runs and wickets at once, resetting bonuses"""
     with get_db() as c:
-        if runs is not None:
-            c.execute("INSERT INTO PLAYER_LIVE_STATS (match_id, player_name, runs) VALUES (%s,%s,%s) ON CONFLICT(match_id, player_name) DO UPDATE SET runs = EXCLUDED.runs", (match_id, player_name, runs))
-        if wickets is not None:
-            c.execute("INSERT INTO PLAYER_LIVE_STATS (match_id, player_name, wickets) VALUES (%s,%s,%s) ON CONFLICT(match_id, player_name) DO UPDATE SET wickets = EXCLUDED.wickets", (match_id, player_name, wickets))
+        # 🛡️ Integrity Check: Check if player belongs to this match squad
+        c.execute("SELECT 1 FROM PLAYERS WHERE match_id=%s AND player_name=%s", (match_id, player_name))
+        if not c.fetchone():
+            return False
+
+        c.execute("""
+            INSERT INTO PLAYER_LIVE_STATS (match_id, player_name, runs, wickets, fours, sixes) 
+            VALUES (%s, %s, %s, %s, 0, 0) 
+            ON CONFLICT(match_id, player_name) 
+            DO UPDATE SET runs = EXCLUDED.runs, 
+                          wickets = EXCLUDED.wickets,
+                          fours = 0, 
+                          sixes = 0
+        """, (match_id, player_name, runs, wickets))
     return True
 
 def db_set_live_link(match_id, link):
