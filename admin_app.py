@@ -48,7 +48,10 @@ def admin_event_markup(match_id, players, active_role='bat', is_locked=False, st
 
     # Match locked hai toh Result declare karne ka option dein
     if is_locked:
-        markup.row(types.InlineKeyboardButton("🏁 DECLARE FINAL RESULT & PAY WINNERS", callback_data=f"adm_settle_{match_id}"))
+        markup.row(types.InlineKeyboardButton("🏁 DECLARE FINAL RESULT & PAY WINNERS", callback_data=f"adm_settle_ask_{match_id}"))
+    
+    # 🌧️ Scenario: Match Abandoned / Refund All
+    markup.row(types.InlineKeyboardButton("🌧️ ABANDON MATCH (Refund All)", callback_data=f"adm_refund_ask_{match_id}"))
 
     # Bulk Update Option
     markup.row(types.InlineKeyboardButton("📝 BULK TOTALS (Chunk Update)", callback_data=f"adm_bulk_up_{match_id}"))
@@ -106,6 +109,10 @@ def handle_admin_nav(call, bot):
         markup.add(types.InlineKeyboardButton("🔙 Back", callback_data="adm_nav_home"))
         bot.edit_message_text(text, chat_id, mid, reply_markup=markup, parse_mode='HTML')
 
+    elif nav == "adm_nav_get_user":
+        bot.answer_callback_query(call.id)
+        final_bot.cmd_get_user_data(call.message)
+
     elif nav.startswith("adm_fin_"):
         bot.answer_callback_query(call.id)
         match_id = nav.split("_")[2]
@@ -148,10 +155,37 @@ def handle_admin_nav(call, bot):
                 pass # Ignore if no changes were made to the UI
             else: raise e
 
-    elif nav.startswith("adm_settle_"):
-        match_id = nav.split("_")[2]
-        bot.answer_callback_query(call.id, "Settling Match & Distributing Prizes...", show_alert=True)
+    elif nav.startswith("adm_settle_ask_"):
+        match_id = nav.split("_")[3]
+        bot.answer_callback_query(call.id)
+        markup = types.InlineKeyboardMarkup()
+        markup.add(
+            types.InlineKeyboardButton("🔥 YES, CONFIRM & PAY", callback_data=f"adm_settle_confirm_{match_id}"),
+            types.InlineKeyboardButton("❌ NO, CANCEL", callback_data=f"adm_ctrl_{match_id}")
+        )
+        bot.edit_message_text(f"⚠️ <b>CONFIRM SETTLEMENT</b>\n\nMatch: <code>{match_id}</code>\n\nKya aap pakka result declare karke winners ko pay karna chahte hain? Yeh process wapas nahi liya ja sakta.", 
+                             chat_id, mid, reply_markup=markup, parse_mode='HTML')
+
+    elif nav.startswith("adm_settle_confirm_"):
+        match_id = nav.split("_")[3]
+        bot.answer_callback_query(call.id, "🚀 Settle shuru ho raha hai...", show_alert=True)
         final_bot.process_match_end(match_id)
+
+    elif nav.startswith("adm_refund_ask_"):
+        match_id = nav.split("_")[3]
+        bot.answer_callback_query(call.id)
+        markup = types.InlineKeyboardMarkup()
+        markup.add(
+            types.InlineKeyboardButton("💰 YES, REFUND EVERYONE", callback_data=f"adm_refund_confirm_{match_id}"),
+            types.InlineKeyboardButton("❌ NO, CANCEL", callback_data=f"adm_ctrl_{match_id}")
+        )
+        bot.edit_message_text(f"⚠️ <b>ABANDON MATCH & REFUND</b>\n\nMatch: <code>{match_id}</code>\n\nKya aap pakka is match ke saare users ka paisa wapas karna chahte hain?", 
+                             chat_id, mid, reply_markup=markup, parse_mode='HTML')
+
+    elif nav.startswith("adm_refund_confirm_"):
+        match_id = nav.split("_")[3]
+        bot.answer_callback_query(call.id, "💸 Refund process shuru...", show_alert=True)
+        final_bot.process_match_refund(match_id)
 
     elif nav == "adm_nav_help":
         bot.answer_callback_query(call.id)
