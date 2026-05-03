@@ -890,3 +890,10 @@ def db_get_user_results(user_id):
             ORDER BY r.timestamp DESC
         """, (str(user_id),))
         return c.fetchall()
+
+def db_get_all_paid_entries(match_id):
+    """Match cancel hone par refund ke liye saari entries nikalta hai"""
+    with get_db() as c:
+        search_pattern = f"DEBIT_MATCH_{match_id}_%"
+        c.execute("SELECT user_id, ABS(amount) as fee, reference_id, team_num FROM LEDGER WHERE reference_id LIKE %s AND type='DEBIT'", (search_pattern,))
+        return c.fetchall()
