@@ -765,31 +765,8 @@ def callback_view_team(call):
         bot.answer_callback_query(call.id, "Team not found!")
         return
 
-    text = f"🎉 *TEAM {team_num} SAVED! - {MATCHES[match_id]['name']}*\n\n"
-    for role in ROLES:
-        players = team.get(role, [])
-        if players:
-            text += f"*{ROLE_NAMES[role]}:* {', '.join(players)}\n"
-    
-    text += f"\n👑 C: {team.get('captain', '❌')}\n⭐ VC: {team.get('vice_captain', '❌')}"
-    text += f"\n\n━━━━━━━━━━━━━━━━━━━━"
-    text += f"\n💰 Paid: {'✅ YES' if team.get('is_paid') else '❌ NO'}"
-
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    if not is_match_locked(match_id):
-        markup.add(types.InlineKeyboardButton("✏️ EDIT TEAM", callback_data=f"nav_bat_{match_id}_{team_num}"))
-        # 🚀 UX Improvement: If C/VC are set, show Join Contest button directly
-        markup.add(types.InlineKeyboardButton("🎯 SET/CHANGE C & VC", callback_data=f"set_cv_menu_{match_id}_{team_num}"))
-        
-        if team.get('captain') and team.get('vice_captain') and not team.get('is_paid'):
-            markup.add(types.InlineKeyboardButton("🚀 JOIN BATTLE NOW", callback_data=f"show_match_{match_id}"))
-            
-        if not team.get('is_paid'):
-            markup.add(types.InlineKeyboardButton("🗑️ DELETE TEAM", callback_data=f"del_team_ask_{match_id}_{team_num}"))
-
-    markup.add(types.InlineKeyboardButton("📊 POINTS BREAKDOWN", callback_data=f"pts_break_{match_id}_{team_num}"))
-    markup.add(types.InlineKeyboardButton("🔙 BACK TO SLOTS", callback_data=f"team_slots_{match_id}"))
-    
+    match_name = MATCHES.get(match_id, {}).get('name', match_id)
+    markup, text = ui.team_view_render(match_id, match_name, team_num, team, is_match_locked(match_id))
     bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode='Markdown')
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("pts_break_"))
