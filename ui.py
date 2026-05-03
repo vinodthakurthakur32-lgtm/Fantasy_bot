@@ -535,3 +535,48 @@ def team_slot_picker_render(user_id, match_id, fee, db_helper):
     
     res += "✅ Paid & Ready\n❌ Not Paid (Select to Join)\n⚪ Empty (Select to Create)"
     return markup, res
+
+def team_view_render(match_id, match_name, team_num, team, is_locked):
+    """Professional team preview with icons and organized layout"""
+    status = "✅ PAID & ACTIVE" if team.get('is_paid') else "⚠️ UNPAID (Not in Battle)"
+    
+    res = f"📋 *TEAM PREVIEW | T{team_num}*\n"
+    res += f"🏟 *Match:* {match_name}\n"
+    res += f"💳 *Status:* {status}\n"
+    res += "━━━━━━━━━━━━━━━━━━━━\n"
+
+    # Role icons for professional look
+    icons = {'wk': '🧤', 'bat': '🏏', 'ar': '⭐', 'bowl': '🥎', 'sub': '🔄'}
+
+    for role in ['wk', 'bat', 'ar', 'bowl', 'sub']:
+        p_list = team.get(role, [])
+        if not p_list: continue
+
+        role_label = "IMPACT PLAYER" if role == 'sub' else role.upper()
+        res += f"\n{icons.get(role, '👤')} *{role_label}*\n"
+        
+        for p in p_list:
+            tag = ""
+            if p == team.get('captain'): tag = " (C) 👑"
+            elif p == team.get('vice_captain'): tag = " (VC) ⭐"
+            res += f" ├ `{p}`{tag}\n"
+
+    res += "\n━━━━━━━━━━━━━━━━━━━━\n"
+    res += "👉 _Match shuru hone par live points yahan dikhenge._"
+
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    if not is_locked:
+        markup.add(types.InlineKeyboardButton("✏️ EDIT SQUAD", callback_data=f"nav_bat_{match_id}_{team_num}"))
+        markup.add(types.InlineKeyboardButton("👑 SET CAPTAIN / VC", callback_data=f"set_cv_menu_{match_id}_{team_num}"))
+        
+        if not team.get('is_paid'):
+            markup.add(types.InlineKeyboardButton("🚀 JOIN BATTLE NOW", callback_data=f"show_match_{match_id}"))
+            markup.add(types.InlineKeyboardButton("🗑️ DELETE TEAM", callback_data=f"del_team_ask_{match_id}_{team_num}"))
+
+    markup.add(
+        types.InlineKeyboardButton("📊 POINTS BREAKDOWN", callback_data=f"pts_break_{match_id}_{team_num}"),
+        types.InlineKeyboardButton("🔄 REFRESH", callback_data=f"view_team_{match_id}_{team_num}"),
+        types.InlineKeyboardButton("🔙 BACK TO SLOTS", callback_data=f"team_slots_{match_id}")
+    )
+    
+    return markup, res
