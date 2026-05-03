@@ -12,12 +12,12 @@ POINT_SYSTEM = {
 CAPTAIN_MULTIPLIER = 2.0
 VC_MULTIPLIER = 1.5
 
-def update_match_event(match_id, player_name, event_type):
-    player_name = player_name.replace('_', ' ') # Fix: Pat_Cummins -> Pat Cummins
+def update_player_stat_only(match_id, player_name, event_type):
+    """Sirf player ke individual stats update karta hai (UI Refresh ke liye fast)"""
+    player_name = player_name.replace('_', ' ').strip()
     points = POINT_SYSTEM.get(event_type, 0)
     
     with db.get_db() as conn:
-        # 1. Update Player Stats
         col = "runs" if event_type == 'run' else event_type + "s" if event_type in ['four', 'six'] else "wickets"
         conn.execute(f"""
             INSERT INTO PLAYER_LIVE_STATS (match_id, player_name, {col}) 
@@ -28,9 +28,16 @@ def update_match_event(match_id, player_name, event_type):
         # 2. Log Event
         conn.execute("INSERT INTO MATCH_EVENTS (match_id, player_name, event_type, points_awarded) VALUES (%s,%s,%s,%s)",
                      (match_id, player_name, event_type, points))
+    return True
 
-        # 3. ⚡ BULK UPDATE TEAMS (Zero Lag Logic)
+def update_team_points_incrementally(match_id, player_name, event_type):
+    """Hazaaron teams ke points background mein update karta hai"""
+    player_name = player_name.replace('_', ' ').strip()
+    points = POINT_SYSTEM.get(event_type, 0)
+    
+    with db.get_db() as conn:
         p_like = f"%{player_name}%"
+
         # normal players
         conn.execute("""
             UPDATE TEAMS SET points = points + %s 
@@ -45,6 +52,10 @@ def update_match_event(match_id, player_name, event_type):
         # VCs (1.5x)
         conn.execute("UPDATE TEAMS SET points = points + %s WHERE match_id = %s AND vice_captain LIKE %s", (points * VC_MULTIPLIER, match_id, p_like))
 
+def update_match_event(match_id, player_name, event_type):
+    """Legacy wrapper for backward compatibility"""
+    update_player_stat_only(match_id, player_name, event_type)
+    update_team_points_incrementally(match_id, player_name, event_type)
     return True
 
 def recalculate_match_points(match_id):
