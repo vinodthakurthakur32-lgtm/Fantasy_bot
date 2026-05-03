@@ -3052,13 +3052,13 @@ def process_match_end(match_id):
             
             bot.send_message(ADMIN_ID, f"✅ <b>Match Settled: {html.escape(MATCHES[match_id]['name'])}</b>\n\nAb ye match users ki history (My Results) mein dikhega aur Contest list se hat chuka hai.", parse_mode='HTML')
             
-            # 🛡️ Run Automatic Audit BEFORE cleanup so report remains accurate
-            time.sleep(2)
+            # 🛡️ Run Automatic Audit with 5-second delay for safety
+            time.sleep(5)
             audit_data = db.db_get_match_audit_data(match_id)
             report = ui.audit_report_render(match_id, MATCHES[match_id]['name'], audit_data)
             bot.send_message(ADMIN_ID, report, parse_mode='Markdown')
-
-            # 🧹 Cleanup: Ab unpaid/refunded teams ko delete kar sakte hain
+            
+            # 🧹 Cleanup: Ab unpaid teams ko delete kar sakte hain
             db.db_cleanup_unpaid_teams(match_id)
             
             logging.info(f"✅ Points calculation completed for match: {match_id}")
@@ -3693,7 +3693,6 @@ def process_delete_contest_callback(msg):
 # ===================================================
 # START BOT
 # ===================================================
-
 # ===================================================
 # INITIALIZATION
 # ===================================================
