@@ -71,8 +71,8 @@ def admin_match_finance_render(match_id, match_name, fin_data):
         bd = get_prize_breakdown(cfg['entry_fee'], cfg['max_slots'], match_id=match_id)
         res += (
             f"\n📍 *Contest ₹{cfg['entry_fee']} ({cfg['max_slots']} slots):*\n"
-            f"🥇 1st: ₹{bd['1st']} | 🥈 2nd: ₹{bd['2nd']}\n"
-            f"🥉 3rd: ₹{bd['3rd']} | 🏅 4-10: ₹{bd['4-10']}\n"
+            f"🥇 1st: ₹{bd.get('1st', 0)} | 🥈 2nd: ₹{bd.get('2nd', 0)}\n"
+            f"🥉 3rd: ₹{bd.get('3rd', 0)} | 🏅 4-10: ₹{bd.get('4-10', bd.get('4th', 0))}\n"
         )
 
     markup = types.InlineKeyboardMarkup()
@@ -209,7 +209,9 @@ def admin_referral_render(top_refs):
         res += "No referral data available."
     else:
         for i, ref in enumerate(top_refs, 1):
-            res += f"{i}. `ID:{ref[0]}` ➔ *{ref[1]} Invites*\n"
+            uid = ref.get('referred_by', ref.get('username', 'N/A')) if isinstance(ref, dict) else ref[0]
+            count = ref.get('count', ref.get('points', 0)) if isinstance(ref, dict) else ref[1]
+            res += f"{i}. `ID:{uid}` ➔ *{count}*\n"
             
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🔙 Back", callback_data="adm_nav_home"))
