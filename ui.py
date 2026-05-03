@@ -521,10 +521,10 @@ def team_slot_picker_render(user_id, match_id, fee, db_helper):
     buttons = []
     for i in range(1, 11): # Showing first 10 slots
         status = db_helper(user_id, match_id, i)
-        if status == "paid":
-            icon, cb = "✅", f"already_joined"
-        elif status == "unpaid":
-            icon, cb = "❌", f"final_join_{match_id}_{i}_{fee}"
+        if status in ["paid", "unpaid"]:
+            # Saved teams are always selectable for re-joining
+            icon = "✅" if status == "paid" else "💾"
+            cb = f"confirm_join_{match_id}_{i}_{fee}"
         else:
             icon, cb = "⚪", f"nav_bat_{match_id}_{i}"
         
