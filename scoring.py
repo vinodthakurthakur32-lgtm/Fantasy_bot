@@ -12,6 +12,7 @@ CAPTAIN_MULTIPLIER = 2.0
 VC_MULTIPLIER = 1.5
 
 def update_match_event(match_id, player_name, event_type):
+    player_name = player_name.replace('_', ' ') # Fix: Pat_Cummins -> Pat Cummins
     points = POINT_SYSTEM.get(event_type, 0)
     
     with db.get_db() as conn:
