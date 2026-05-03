@@ -498,6 +498,9 @@ def callback_copy_channel_handle(call):
 def cmd_my_team(msg):
     markup = types.InlineKeyboardMarkup(row_width=1)
     for mid, info in MATCHES.items():
+        # Settled matches (Calculated or Distributed) should not allow new teams
+        if info.get('points_calculated'):
+            continue
         markup.add(types.InlineKeyboardButton(f"⚾ Build for {info['name']}", callback_data=f"team_slots_{mid}"))
     bot.send_message(msg.chat.id, "Select Match to Build Team:", reply_markup=markup)
 
@@ -520,6 +523,7 @@ def callback_team_slots(call):
     all_user_teams = db.db_get_all_user_teams(uid, match_id)
     # Create a lookup map: team_num -> data
     teams_map = {int(t['team_num']): t for t in all_user_teams}
+    locked = is_match_locked(match_id)
 
     markup = types.InlineKeyboardMarkup(row_width=5)
     buttons = []
@@ -532,8 +536,12 @@ def callback_team_slots(call):
         t_data = teams_map.get(i)
         is_saved = t_data and t_data.get('team_saved') == 1
         
-        label = f"T{i}✅" if is_saved else f"T{i}"
-        cb = f"view_team_{match_id}_{i}" if is_saved else f"nav_bat_{match_id}_{i}"
+        if is_saved:
+            label = f"T{i}✅"
+            cb = f"view_team_{match_id}_{i}"
+        else:
+            label = f"T{i}🔒" if locked else f"T{i}"
+            cb = "ignore_locked" if locked else f"nav_bat_{match_id}_{i}"
         buttons.append(types.InlineKeyboardButton(label, callback_data=cb))
 
     markup.add(*buttons)
@@ -554,6 +562,10 @@ def callback_team_slots(call):
     preview_text += "Select an empty slot to create a team, or a ✅ slot to view/edit."
     
     bot.edit_message_text(preview_text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode='Markdown')
+
+@bot.callback_query_handler(func=lambda call: call.data == "ignore_locked")
+def callback_ignore_locked(call):
+    bot.answer_callback_query(call.id, "🚫 Match start ho chuka hai! Ab nayi team nahi bana sakte.", show_alert=True)
 
 @bot.callback_query_handler(func=lambda call: call.data == "cmd_my_team_nav")
 def callback_my_team_nav(call):
@@ -1925,6 +1937,24 @@ def cmd_stats(msg):
 
     bot.send_message(msg.chat.id, text, parse_mode='Markdown')
 
+@bot.message_handler(commands=['results'])
+@bot.message_handler(func=lambda m: m.text and "RESULTS" in m.text.upper())
+def cmd_results(msg):
+    """Command to view match history and results"""
+    uid = str(msg.from_user.id)
+    results = db.db_get_user_results(uid)
+    markup, text = ui.user_results_list_render(results)
+    bot.send_message(msg.chat.id, text, reply_markup=markup, parse_mode='Markdown')
+
+@bot.callback_query_handler(func=lambda call: call.data == "my_results")
+def callback_my_results(call):
+    """Callback for results refresh or dashboard button"""
+    uid = str(call.from_user.id)
+    results = db.db_get_user_results(uid)
+    markup, text = ui.user_results_list_render(results)
+    bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode='Markdown')
+    bot.answer_callback_query(call.id)
+
 @bot.message_handler(commands=['help'])
 @bot.message_handler(func=lambda m: m.text and "HELP" in m.text)
 def cmd_help(msg):
@@ -1962,7 +1992,7 @@ def cmd_help(msg):
 📈 <b>User Stats:</b> /stats - Apni total performance dekhein.
 🎁 <b>Referrals:</b> /myreferrals - Apne referral bonus ki details dekhein.
 📜 <b>History:</b> /history - Apni transaction history dekhein.
-📜 <b>Results:</b> Match khatam hone par purane results dekhein.
+📜 <b>Results:</b> /results - Match khatam hone par purane results dekhein.
 🏆 <b>Leaderboard:</b> /leaderboard - Top 10 users dekhein.
 ⚖️ <b>Rules:</b> /rules - Scoring system samjhein.
 🎫 <b>Support:</b> /support - Kisi bhi problem ke liye ticket banayein.
@@ -3444,6 +3474,7 @@ def cmd_my_matches(msg):
         markup = types.InlineKeyboardMarkup(row_width=2)
         markup.add(
             types.InlineKeyboardButton("➕ Add Players", callback_data=f"adm_m_add_{mid}"),
+            types.InlineKeyboardButton("🎮 Scoring Control", callback_data=f"adm_ctrl_{mid}"),
             types.InlineKeyboardButton("👥 View Squad", callback_data=f"adm_m_view_{mid}")
         )
         markup.row(
