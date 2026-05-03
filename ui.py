@@ -536,9 +536,14 @@ def team_slot_picker_render(user_id, match_id, fee, db_helper):
     res += "✅ Paid & Ready\n❌ Not Paid (Select to Join)\n⚪ Empty (Select to Create)"
     return markup, res
 
-def team_view_render(match_id, match_name, team_num, team, is_locked):
+def team_view_render(match_id, match_name, team_num, team, is_locked, joined_fees=None):
     """Professional team preview with icons and organized layout"""
-    status = "✅ PAID & ACTIVE" if team.get('is_paid') else "⚠️ UNPAID (Not in Battle)"
+    if joined_fees:
+        # List joined contests like: ₹100, ₹100, ₹50
+        contests_str = ", ".join([f"₹{f}" for f in joined_fees])
+        status = f"✅ JOINED: {contests_str}"
+    else:
+        status = "⚠️ UNPAID (Not in Battle)"
     
     res = f"📋 *TEAM PREVIEW | T{team_num}*\n"
     res += f"🏟 *Match:* {match_name}\n"
