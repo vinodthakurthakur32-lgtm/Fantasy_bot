@@ -937,6 +937,8 @@ def callback_delete_team_confirm(call):
 
 @bot.message_handler(commands=['battles', 'contest', 'battle'])
 @bot.message_handler(func=lambda m: m.text and any(x in m.text.upper() for x in ["BATTLES", "CONTEST", "BATTLE"]))
+@bot.message_handler(commands=['battles', 'contest', 'battle', 'matches'])
+@bot.message_handler(func=lambda m: m.text and any(x in m.text.upper() for x in ["BATTLES", "CONTEST", "BATTLE", "MATCHES"]))
 def cmd_contest(msg):
     uid = str(msg.from_user.id)
     markup = types.InlineKeyboardMarkup(row_width=1)
@@ -2889,13 +2891,16 @@ def calculate_all_points(match_id, player_scores):
                 total_pts = 0
                 for role in ROLES:
                     for p in team_data.get(role, []):
-                        p_pts = player_scores.get(p, 0)
+                        # Strip tag like "Rohit Sharma (MI)" to just "Rohit Sharma"
+                        p_raw = str(p).split(' (')[0].strip()
+                        p_pts = player_scores.get(p_raw, 0)
+                        
                         mult = 2.0 if p == row['captain'] else 1.5 if p == row['vice_captain'] else 1.0
                         total_pts += p_pts * mult
                 
                 conn.execute("UPDATE TEAMS SET points = %s WHERE user_id = %s AND match_id = %s AND team_num = %s", 
                              (total_pts, uid, match_id, tnum))
-                row['points'] = total_pts # Update local object for ranking
+                row['points'] = total_pts 
 
             # 3. Group by Contest (Entry Fee) and Reward
             # We find distinct entry fees joined for this match
@@ -2916,12 +2921,12 @@ def calculate_all_points(match_id, player_scores):
                     rank = index + 1
                     prize_amt = 0
                     
-                    if rank == 1: prize_amt = bd['1st']
-                    elif rank == 2: prize_amt = bd['2nd']
-                    elif rank == 3: prize_amt = bd['3rd']
-                    elif rank == 4: prize_amt = bd['4th']
-                    elif rank == 5: prize_amt = bd['5th']
-                    elif 6 <= rank <= 10: prize_amt = bd.get('6-10', bd['bottom'])
+                    if rank == 1: prize_amt = bd.get('1st', 0)
+                    elif rank == 2: prize_amt = bd.get('2nd', 0)
+                    elif rank == 3: prize_amt = bd.get('3rd', 0)
+                    elif rank == 4: prize_amt = bd.get('4th', bd.get('4-10', bd.get('bottom', 0)))
+                    elif rank == 5: prize_amt = bd.get('5th', bd.get('4-10', bd.get('bottom', 0)))
+                    elif 6 <= rank <= 10: prize_amt = bd.get('6-10', bd.get('4-10', bd.get('bottom', 0)))
                     elif rank > 10 and rank <= bd['winners']: prize_amt = bd['bottom']
                     
                     prize_text = f"₹{prize_amt}" if prize_amt > 0 else "₹0"
